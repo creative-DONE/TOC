@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TOC Textile Colouring Production Scheduler</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            factory: {
+              900: '#070c18',
+              800: '#0b1329',
+              700: '#131e3d',
+              600: '#1e2c56',
+              border: '#28396d',
+              gold: '#f59e0b',
+              cyan: '#06b6d4',
+              emerald: '#10b981',
+              rose: '#f43f5e'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons with Fallback -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>window.lucide || document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"><\/script>')</script>
+
+  <!-- React 18 & ReactDOM with Fallback -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script>window.React || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"><\/script>')</script>
+
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script>window.ReactDOM || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"><\/script>')</script>
+  
+  <!-- Babel for JSX with Fallback -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>window.Babel || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.10/babel.min.js"><\/script>')</script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="bg-[#070c18] text-slate-100 min-h-screen antialiased selection:bg-cyan-500 selection:text-black">
+  <div id="root">
+    <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #070c18; color: #f8fafc; font-family: ui-sans-serif, system-ui, sans-serif;">
+      <div style="width: 48px; height: 48px; border: 4px solid #06b6d4; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px;"></div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+      <h2 style="font-size: 18px; font-weight: 700; margin: 0 0 6px 0;">Loading Prime Textiles TOC Scheduler...</h2>
+      <p style="font-size: 13px; color: #94a3b8; margin: 0;">Initializing factory constraints, machine routes, and Drum buffers</p>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      // Global error listener
+      window.addEventListener('error', function(e) {
+        console.error("Global Error Caught:", e);
+        var root = document.getElementById('root');
+        if (root && (!root.children.length || root.innerHTML.indexOf('Loading Prime Textiles') !== -1)) {
+          root.innerHTML = '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#070c18;color:#fff;padding:20px;font-family:sans-serif;text-align:center;">' +
+            '<div style="background:#450a0a;border:1px solid #ef4444;border-radius:12px;padding:24px;max-width:550px;text-align:left;">' +
+            '<h3 style="margin:0 0 10px;color:#fca5a5;font-size:16px;font-weight:bold;">Application Initialization Notice</h3>' +
+            '<p style="margin:0 0 16px;color:#fecaca;font-size:12px;">' + (e.message || "An error occurred while loading the application interface.") + '</p>' +
+            '<button onclick="location.reload(true)" style="background:#06b6d4;color:#000;border:none;padding:8px 18px;border-radius:8px;font-weight:bold;cursor:pointer;">Reload Page</button>' +
+            '</div></div>';
+        }
+      });
+
+      // Console error trap for Babel transpilation errors
+      var origError = console.error;
+      console.error = function() {
+        origError.apply(console, arguments);
+        var msg = Array.prototype.slice.call(arguments).map(function(a) {
+          return typeof a === 'object' && a !== null ? (a.message || a.stack || JSON.stringify(a)) : String(a);
+        }).join(' ');
+        if (msg.indexOf('SyntaxError') !== -1 || msg.indexOf('Babel') !== -1) {
+          var root = document.getElementById('root');
+          if (root && root.innerHTML.indexOf('Loading Prime Textiles') !== -1) {
+            root.innerHTML = '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#070c18;color:#fff;padding:20px;font-family:sans-serif;text-align:center;">' +
+              '<div style="background:#450a0a;border:1px solid #ef4444;border-radius:12px;padding:24px;max-width:550px;text-align:left;">' +
+              '<h3 style="margin:0 0 10px;color:#fca5a5;font-size:16px;font-weight:bold;">Interface Compiler Notice</h3>' +
+              '<pre style="margin:0 0 16px;color:#fecaca;font-size:11px;white-space:pre-wrap;word-break:break-word;background:#2a0808;padding:10px;border-radius:6px;">' + msg + '</pre>' +
+              '<button onclick="location.reload(true)" style="background:#06b6d4;color:#000;border:none;padding:8px 18px;border-radius:8px;font-weight:bold;cursor:pointer;">Hard Reload Page</button>' +
+              '</div></div>';
+          }
+        }
+      };
+    })();
+  </script>
+
+  <!-- Main Application Script with Cache Buster -->
+  <script type="text/babel" src="/static/js/app.js?v=2.2.0"></script>
+</body>
+</html>
