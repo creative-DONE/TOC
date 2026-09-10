@@ -477,8 +477,13 @@ function DashboardView({ dashboard, onSelectOrder, onNavigateTab }) {
 }
 
 // 2. PRODUCTION GANTT CHART COMPONENT
+// 2. PRODUCTION GANTT CHART COMPONENT
 function GanttView({ schedules, machines, selectedTier, onChangeTier, onSelectSlot, onRefresh, showToast }) {
   const [draggedSlot, setDraggedSlot] = useState(null);
+
+  useEffect(() => {
+    setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50);
+  }, [selectedTier, schedules]);
 
   // Group schedules by machine
   const machineSwimlanes = useMemo(() => {
@@ -492,124 +497,202 @@ function GanttView({ schedules, machines, selectedTier, onChangeTier, onSelectSl
     return Object.values(map);
   }, [machines, schedules]);
 
+  const totalVisibleSlots = schedules.length;
+
   return (
     <div className="glass-panel p-5 border border-factory-border/60 space-y-4">
       {/* Gantt Header & Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
-          <h2 className="text-lg font-bold text-white">Interactive Production Gantt Timeline</h2>
-          <p className="text-xs text-slate-400">Drum-Buffer-Rope dispatch schedule with Freeze Window lock badges</p>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-lg font-bold text-white tracking-wide">Interactive Production Gantt Timeline</h2>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+              {totalVisibleSlots} Jobs Scheduled
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">Drum-Buffer-Rope dispatch schedule with Freeze Window lock badges</p>
         </div>
 
         {/* 3-Level Hierarchy Switcher */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400 font-medium">Planning Level:</span>
-          <div className="bg-slate-900 p-1 rounded-lg border border-slate-800 flex gap-1">
+        <div className="flex items-center gap-2.5 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800">
+          <span className="text-xs text-slate-400 font-semibold px-2">Planning Level:</span>
+          <div className="flex gap-1">
             {[
-              { id: 'DAILY', label: 'Daily Dispatch (48h)' },
-              { id: 'WEEKLY', label: 'Weekly Schedule (14d)' },
-              { id: 'MONTHLY', label: 'Monthly Plan (30d)' }
+              { id: 'DAILY', label: 'Daily Dispatch (48h)', icon: 'clock' },
+              { id: 'WEEKLY', label: 'Weekly Schedule (14d)', icon: 'calendar' },
+              { id: 'MONTHLY', label: 'Monthly Plan (30d)', icon: 'calendar-days' }
             ].map(tier => (
               <button
                 key={tier.id}
                 onClick={() => onChangeTier(tier.id)}
-                className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
-                  selectedTier === tier.id ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                  selectedTier === tier.id
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-900/30'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
-                {tier.label}
+                <i data-lucide={tier.icon} className="w-3.5 h-3.5"></i>
+                <span>{tier.label}</span>
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Freeze Window Legend */}
-      <div className="flex items-center gap-6 text-xs text-slate-400 px-2 py-1">
-        <span className="font-semibold text-slate-300">Freeze Policy:</span>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-          <span>Today (Locked)</span>
+      {/* Freeze Policy Legend */}
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-[#0b1329]/90 p-3 rounded-xl border border-slate-800">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="font-bold text-slate-300 flex items-center gap-1.5">
+            <i data-lucide="shield" className="w-3.5 h-3.5 text-cyan-400"></i>
+            <span>Freeze Policy:</span>
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-amber-950/50 text-amber-300 border border-amber-500/50 font-bold text-[11px] flex items-center gap-1.5 shadow-sm">
+            <i data-lucide="lock" className="w-3 h-3 text-amber-400"></i>
+            <span>Today (Locked)</span>
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-blue-950/50 text-blue-300 border border-blue-500/50 font-bold text-[11px] flex items-center gap-1.5 shadow-sm">
+            <i data-lucide="lock" className="w-3 h-3 text-blue-400"></i>
+            <span>Tomorrow (Mostly Locked)</span>
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-emerald-950/50 text-emerald-300 border border-emerald-500/40 font-bold text-[11px] flex items-center gap-1.5 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Flexible Horizon (&gt;1 week deadline — No Lock)</span>
+          </span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-          <span>Tomorrow (Mostly Locked)</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-          <span>Flexible Horizon</span>
+        <div className="text-[11px] text-slate-400 italic">
+          *Products with &gt;1 week deadline are kept flexible and do not show lock icons
         </div>
       </div>
 
       {/* Swimlane Rows */}
-      <div className="space-y-4 pt-2 overflow-x-auto">
+      <div className="space-y-4 pt-1 overflow-x-auto">
         {machineSwimlanes.map(({ machine, slots }) => {
-          const isDrum = machine.code === 'JET-M2'; // High capacity bottleneck
+          const isDrum = machine.code === 'JET-M2'; // High capacity bottleneck vessel
           return (
-            <div key={machine.id} className={`p-3 rounded-xl border ${isDrum ? 'bg-amber-950/20 border-amber-500/40 drum-glow' : 'bg-slate-900/50 border-slate-800'}`}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs text-white">{machine.name}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+            <div
+              key={machine.id}
+              className={`p-3.5 rounded-xl border transition-all ${
+                isDrum
+                  ? 'bg-amber-950/15 border-amber-500/40 shadow-lg shadow-amber-950/20'
+                  : 'bg-slate-900/60 border-slate-800'
+              }`}
+            >
+              {/* Machine Header */}
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-bold text-xs text-white tracking-wide">{machine.name}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700/60">
                     Max Batch: {machine.max_batch_kg}kg
                   </span>
                   {isDrum && (
-                    <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                      TOC DRUM
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black bg-amber-500/20 text-amber-300 border border-amber-500/50 flex items-center gap-1 animate-pulse">
+                      <i data-lucide="gauge" className="w-3 h-3 text-amber-400"></i>
+                      <span>TOC DRUM (Bottleneck)</span>
                     </span>
                   )}
                 </div>
                 <div className="text-xs text-slate-400">
-                  Total Workload: <strong className="text-slate-200">{slots.reduce((sum, s) => sum + s.quantity_kg, 0)} kg</strong>
+                  Total Workload: <strong className="text-white">{slots.reduce((sum, s) => sum + s.quantity_kg, 0)} kg</strong> ({slots.length} jobs)
                 </div>
               </div>
 
               {/* Slot Blocks Bar */}
-              <div className="flex flex-wrap gap-2 min-h-[56px] p-2 bg-[#070c18] rounded-lg border border-slate-800/80 items-center">
+              <div className="flex flex-wrap gap-3 min-h-[64px] p-2.5 bg-[#070c18] rounded-xl border border-slate-800/90 items-center">
                 {slots.length === 0 ? (
-                  <span className="text-xs text-slate-500 italic px-2">No jobs currently scheduled for this machine window</span>
+                  <span className="text-xs text-slate-500 italic px-2">No jobs scheduled for this vessel in current planning window</span>
                 ) : (
                   slots.map(s => {
                     const start = new Date(s.planned_start);
                     const end = new Date(s.planned_end);
-                    const isLocked = s.is_locked;
-                    
+                    const now = new Date();
+                    const dueDate = s.due_date ? new Date(s.due_date) : null;
+                    const daysToDeadline = dueDate ? Math.round((dueDate - now) / (1000 * 60 * 60 * 24)) : 999;
+                    const isMoreThan1Week = daysToDeadline > 7;
+
+                    // Strictly enforce user's Freeze Policy rule:
+                    // "dont show lock for products that have more than 1 week deadline"
+                    const isTodayLocked = !isMoreThan1Week && (s.freeze_level === 'LOCKED' || (s.is_locked && daysToDeadline <= 2));
+                    const isTomorrowLocked = !isMoreThan1Week && (s.freeze_level === 'MOSTLY_LOCKED' || (s.is_locked && daysToDeadline <= 5 && !isTodayLocked));
+                    const isFlexible = isMoreThan1Week || (!isTodayLocked && !isTomorrowLocked);
+
                     return (
                       <div
                         key={s.id}
                         onClick={() => onSelectSlot(s)}
-                        className={`px-3 py-2 rounded-lg border cursor-pointer transition-all hover:scale-105 flex items-center gap-2.5 shadow-lg ${
-                          isLocked
-                            ? 'bg-amber-950/40 border-amber-600/60 text-amber-200'
-                            : 'bg-slate-800/90 border-slate-700 text-slate-200 hover:border-cyan-500'
+                        className={`p-3 rounded-xl border cursor-pointer transition-all hover:scale-[1.02] flex flex-col gap-2 shadow-lg min-w-[240px] max-w-[300px] ${
+                          isTodayLocked
+                            ? 'bg-amber-950/30 border-amber-500/60 text-amber-100 hover:border-amber-400'
+                            : isTomorrowLocked
+                            ? 'bg-blue-950/30 border-blue-500/60 text-blue-100 hover:border-blue-400'
+                            : 'bg-slate-800/90 border-slate-700 hover:border-emerald-500 text-slate-200'
                         }`}
+                        title="Click to view explainable scheduling rationales and override options"
                       >
-                        {/* Colour Swatch Dot */}
-                        <div
-                          className="w-3 h-3 rounded-full border border-white/40 shadow-sm"
-                          style={{
-                            backgroundColor:
-                              s.colour_code === 'WHITE' ? '#ffffff' :
-                              s.colour_code === 'ROYAL_BLUE' ? '#2563eb' :
-                              s.colour_code === 'DEEP_NAVY' ? '#1e3a8a' :
-                              s.colour_code === 'JET_BLACK' ? '#0f172a' :
-                              s.colour_code === 'SCARLET_RED' ? '#dc2626' :
-                              s.colour_code === 'GOLDEN_YELLOW' ? '#eab308' : '#06b6d4'
-                          }}
-                        ></div>
+                        {/* Top Card Row: Swatch + Order + Freeze Window Badge */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-3.5 h-3.5 rounded-full border border-white/40 shadow-sm shrink-0"
+                              style={{
+                                backgroundColor:
+                                  s.colour_code === 'WHITE' ? '#ffffff' :
+                                  s.colour_code === 'ROYAL_BLUE' ? '#2563eb' :
+                                  s.colour_code === 'DEEP_NAVY' ? '#1e3a8a' :
+                                  s.colour_code === 'JET_BLACK' ? '#0f172a' :
+                                  s.colour_code === 'SCARLET_RED' ? '#dc2626' :
+                                  s.colour_code === 'PASTEL_PINK' ? '#f472b6' :
+                                  s.colour_code === 'SKY_BLUE' ? '#38bdf8' :
+                                  s.colour_code === 'GOLDEN_YELLOW' ? '#eab308' : '#06b6d4'
+                              }}
+                            ></span>
+                            <span className="text-xs font-bold text-white">{s.order_number}</span>
+                          </div>
 
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold">{s.order_number}</span>
-                            {isLocked && <i data-lucide="lock" className="w-3 h-3 text-amber-400"></i>}
-                          </div>
-                          <div className="text-[10px] text-slate-400">
-                            {s.quantity_kg}kg • {s.cloth_type.split(' ')[0]} • {start.getHours()}:00–{end.getHours()}:00
-                          </div>
+                          {/* Lock Badge or Flexible Horizon */}
+                          {isTodayLocked ? (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-1 shadow-sm">
+                              <i data-lucide="lock" className="w-2.5 h-2.5 text-amber-400"></i>
+                              <span>Today (Locked)</span>
+                            </span>
+                          ) : isTomorrowLocked ? (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black bg-blue-500/25 text-blue-300 border border-blue-500/50 flex items-center gap-1 shadow-sm">
+                              <i data-lucide="lock" className="w-2.5 h-2.5 text-blue-400"></i>
+                              <span>Tomorrow (Mostly Locked)</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                              <span>Flexible Horizon</span>
+                            </span>
+                          )}
                         </div>
 
-                        {/* Explainability Icon */}
-                        <i data-lucide="info" className="w-3.5 h-3.5 text-slate-400 hover:text-cyan-400 ml-1"></i>
+                        {/* Middle Row: Customer + Cloth */}
+                        <div className="text-[11px] text-slate-300 truncate">
+                          <strong className="text-white">{s.customer_name}</strong> • {s.quantity_kg}kg {s.cloth_type}
+                        </div>
+
+                        {/* Bottom Row: Start-End time & Deadline status */}
+                        <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-800/80 text-slate-400">
+                          <span>
+                            {start.toLocaleDateString([], { month: 'short', day: 'numeric' })} {start.getHours()}:00–{end.getHours()}:00
+                          </span>
+
+                          <div className="flex items-center gap-1.5">
+                            {isMoreThan1Week ? (
+                              <span className="text-emerald-400 font-semibold flex items-center gap-0.5">
+                                <i data-lucide="calendar" className="w-2.5 h-2.5"></i>
+                                <span>Due {daysToDeadline}d (&gt;1wk)</span>
+                              </span>
+                            ) : (
+                              <span className="text-amber-400 font-semibold flex items-center gap-0.5">
+                                <i data-lucide="clock" className="w-2.5 h-2.5"></i>
+                                <span>Due {daysToDeadline}d</span>
+                              </span>
+                            )}
+                            <i data-lucide="info" className="w-3 h-3 text-cyan-400 hover:text-white ml-0.5"></i>
+                          </div>
+                        </div>
                       </div>
                     );
                   })

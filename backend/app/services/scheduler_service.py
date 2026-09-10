@@ -208,11 +208,23 @@ class SchedulerService:
                 )
 
                 total_slot_min = proc_times["total_processing_min"]
-                slot_start = machine_clocks[m_id]
-                slot_end = slot_start + timedelta(minutes=total_slot_min)
+                
+                # Determine earliest appropriate start based on deadline
+                days_left = (curr_order.due_date - self.now).total_seconds() / 86400.0
+                if days_left <= 2.0:
+                    earliest_start = self.now + timedelta(hours=2)
+                elif days_left <= 5.0:
+                    earliest_start = self.now + timedelta(hours=26)
+                else:
+                    days_ahead = min(12, max(4, int(days_left - 4)))
+                    earliest_start = self.now + timedelta(days=days_ahead, hours=2)
 
-                # Check Freeze Window status
-                freeze_level, is_locked = get_freeze_status_for_time(slot_start, self.now)
+                slot_start = max(machine_clocks[m_id], earliest_start)
+                slot_end = slot_start + timedelta(minutes=total_slot_min)
+                machine_clocks[m_id] = slot_end + timedelta(minutes=20)
+
+                # Check Freeze Window status with product deadline awareness
+                freeze_level, is_locked = get_freeze_status_for_time(slot_start, self.now, curr_order.due_date)
 
                 # Generate explainable reasons
                 slack_hours = (curr_order.due_date - slot_end).total_seconds() / 3600.0

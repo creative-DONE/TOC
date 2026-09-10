@@ -71,6 +71,7 @@ def get_schedule_slots(
             is_locked=s.is_locked,
             freeze_level=s.freeze_level,
             priority=o.priority if o else "MEDIUM",
+            due_date=o.due_date if o else None,
             scheduling_reason=s.scheduling_reason,
             operating_cost_inr=s.operating_cost_inr
         ))

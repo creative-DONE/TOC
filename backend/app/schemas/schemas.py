@@ -160,6 +160,7 @@ class ScheduleSlotResponse(BaseModel):
     is_locked: bool
     freeze_level: str
     priority: str
+    due_date: Optional[datetime] = None
     scheduling_reason: Optional[str] = None
     operating_cost_inr: float
 

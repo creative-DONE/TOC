@@ -1,22 +1,29 @@
 from datetime import datetime, timedelta
-from typing import Tuple
+from typing import Tuple, Optional
 from app.config import settings
 
 def get_freeze_status_for_time(
     slot_time: datetime,
-    reference_now: datetime
+    reference_now: datetime,
+    due_date: Optional[datetime] = None
 ) -> Tuple[str, bool]:
     """
     Evaluates the configurable Freeze Window:
-    - Today (0-24h): 🔒 LOCKED
-    - Tomorrow (24-48h): 🔒 MOSTLY_LOCKED
+    - Today (0-24h): 🔒 LOCKED (only for urgent orders with <= 7d deadline)
+    - Tomorrow (24-48h): 🔒 MOSTLY_LOCKED (only for urgent orders with <= 7d deadline)
     - 2-3 Days (48-72h): 🟠 LIMITED
     - 4-7 Days (72-168h): 🟡 MODERATE
-    - > 7 Days: 🟢 FLEXIBLE
+    - > 7 Days: 🟢 FLEXIBLE (Products with > 1 week deadline do not show lock)
     
     Returns:
     (freeze_level_name, is_locked)
     """
+    # Freeze policy rule: Products that have more than 1 week deadline (> 7 days) are in the Flexible Horizon and NOT locked
+    if due_date:
+        days_to_deadline = (due_date - reference_now).total_seconds() / 86400.0
+        if days_to_deadline > 7.0:
+            return "FLEXIBLE", False
+
     diff_hours = (slot_time - reference_now).total_seconds() / 3600.0
     
     if diff_hours <= settings.FREEZE_TODAY_HOURS:
