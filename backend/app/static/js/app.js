@@ -17,12 +17,14 @@ function App() {
   const [optimizing, setOptimizing] = useState(false);
   const [notification, setNotification] = useState(null);
   const [selectedTier, setSelectedTier] = useState('WEEKLY');
+  const [dailyAgenda, setDailyAgenda] = useState(null);
+  const [agendaDays, setAgendaDays] = useState(7);
 
   // Load all data
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [dashRes, schedRes, ordRes, machRes, matRes, foreRes, scoreRes, coRes] = await Promise.all([
+      const [dashRes, schedRes, ordRes, machRes, matRes, foreRes, scoreRes, coRes, agendaRes] = await Promise.all([
         fetch('/api/dashboard/overview').then(r => r.json()),
         fetch(`/api/schedule/slots?tier=${selectedTier}`).then(r => r.json()),
         fetch('/api/orders').then(r => r.json()),
@@ -30,7 +32,8 @@ function App() {
         fetch('/api/materials').then(r => r.json()),
         fetch('/api/materials/forecast').then(r => r.json()),
         fetch('/api/schedule/quality-score').then(r => r.json()),
-        fetch('/api/schedule/changeover-matrix').then(r => r.json())
+        fetch('/api/schedule/changeover-matrix').then(r => r.json()),
+        fetch(`/api/schedule/daily-agenda?days=${agendaDays}`).then(r => r.json())
       ]);
 
       setDashboard(dashRes);
@@ -41,6 +44,7 @@ function App() {
       setForecasts(foreRes);
       setQualityScore(scoreRes);
       setChangeoverMatrix(coRes);
+      setDailyAgenda(agendaRes);
     } catch (err) {
       console.error("Failed to load factory data", err);
     } finally {
@@ -51,7 +55,7 @@ function App() {
 
   useEffect(() => {
     fetchData();
-  }, [selectedTier]);
+  }, [selectedTier, agendaDays]);
 
   const showToast = (msg, type = 'success') => {
     setNotification({ msg, type });
@@ -183,6 +187,7 @@ function App() {
       <nav className="bg-[#0b1329]/80 border-b border-factory-border/40 px-6 flex space-x-1 overflow-x-auto">
         {[
           { id: 'dashboard', label: 'TOC Command Center', icon: 'activity' },
+          { id: 'agenda', label: 'Daily Production Agenda', icon: 'clipboard-list' },
           { id: 'gantt', label: 'Production Gantt Chart', icon: 'calendar' },
           { id: 'orders', label: 'Order Readiness & Urgency', icon: 'shopping-bag' },
           { id: 'machines', label: 'Machines & Changeover Matrix', icon: 'cpu' },
@@ -219,6 +224,18 @@ function App() {
           />
         )}
 
+        {activeTab === 'agenda' && (
+          <AgendaView
+            agenda={dailyAgenda}
+            agendaDays={agendaDays}
+            onChangeAgendaDays={(d) => setAgendaDays(d)}
+            onSelectOrder={(ord) => setSelectedOrder(ord)}
+            onSelectSlot={(slot) => setSelectedSlot(slot)}
+            onRefresh={fetchData}
+            showToast={showToast}
+          />
+        )}
+
         {activeTab === 'gantt' && (
           <GanttView
             schedules={schedules}
@@ -244,6 +261,8 @@ function App() {
           <MachinesView
             machines={machines}
             changeoverMatrix={changeoverMatrix}
+            onRefresh={fetchData}
+            showToast={showToast}
           />
         )}
 
@@ -2020,66 +2039,569 @@ function CreateOrderModal({ onClose, onSuccess }) {
   );
 }
 
-// 5. MACHINES & CHANGEOVER MATRIX COMPONENT
-function MachinesView({ machines, changeoverMatrix }) {
+// 4B. DAY-TO-DAY PRODUCTION AGENDA & SHIFT DISPATCH
+function AgendaView({ agenda, agendaDays, onChangeAgendaDays, onSelectOrder, onSelectSlot, onRefresh, showToast }) {
+  const [selectedDayIdx, setSelectedDayIdx] = useState(0);
+
+  if (!agenda || !agenda.days || agenda.days.length === 0) {
+    return (
+      <div className="glass-panel p-8 text-center text-slate-400">
+        <i data-lucide="calendar" className="w-10 h-10 mx-auto text-cyan-500 mb-3 animate-pulse"></i>
+        <h3 className="text-sm font-bold text-white">Loading Day-to-Day Production Agenda...</h3>
+        <p className="text-xs text-slate-500 mt-1">Retrieving shift schedules, batch dispatches, and maintenance windows</p>
+      </div>
+    );
+  }
+
+  const days = agenda.days;
+  const currentDay = days[selectedDayIdx] || days[0];
+
   return (
     <div className="space-y-6">
-      {/* Machine Fleet Telemetry Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {machines.map(m => (
-          <div key={m.id} className="glass-card p-4 border border-factory-border/50 flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">{m.code}</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              </div>
-              <h4 className="text-xs font-bold text-white truncate">{m.name}</h4>
-              <div className="text-[11px] text-slate-400 mt-1">Cap: {m.max_batch_kg}kg • Eff: {(m.efficiency * 100).toFixed(0)}%</div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-1 text-[11px]">
-              <div className="flex justify-between text-slate-400">
-                <span>Reliability:</span>
-                <strong className="text-slate-200">{m.reliability_pct}%</strong>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>MTBF / MTTR:</span>
-                <strong className="text-slate-200">{m.mtbf_hours}h / {m.mttr_hours}h</strong>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Workload:</span>
-                <strong className="text-cyan-400">{m.current_workload_kg} kg</strong>
-              </div>
-            </div>
+      {/* Top Header & Horizon Switcher */}
+      <div className="glass-panel p-5 border border-factory-border/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-base font-bold text-white tracking-wide">Day-to-Day Production Agenda & Shift Schedule</h2>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+              Shop Floor Dispatch
+            </span>
           </div>
-        ))}
-      </div>
-
-      {/* Multi-Dimensional Colour Changeover Heatmap */}
-      <div className="glass-panel p-5 border border-factory-border/60 space-y-3">
-        <div className="flex justify-between items-center">
-          <div>
-            <h3 className="text-sm font-bold text-white">Sequence-Dependent Colour Changeover Matrix</h3>
-            <p className="text-xs text-slate-400">Shows transition time (min), water usage (L), and caustic chemical penalty</p>
-          </div>
-          <span className="text-xs text-amber-400 font-semibold">Dark-to-Light requires severe caustic boil-out</span>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Shift-by-shift detailed work orders: what machine runs what batch, colour sequence, changeover cleaning, and maintenance windows.
+          </p>
         </div>
 
+        {/* 1-Week vs 1-Month Selector */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center p-1 bg-slate-900/90 rounded-xl border border-slate-700/80">
+            <button
+              onClick={() => onChangeAgendaDays(7)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                agendaDays === 7 ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <i data-lucide="calendar" className="w-3.5 h-3.5"></i>
+              <span>1 Week (7 Days)</span>
+            </button>
+            <button
+              onClick={() => onChangeAgendaDays(30)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                agendaDays === 30 ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <i data-lucide="calendar-range" className="w-3.5 h-3.5"></i>
+              <span>1 Month (30 Days)</span>
+            </button>
+          </div>
+
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition-all flex items-center gap-1.5"
+            title="Print Daily Dispatch Sheet"
+          >
+            <i data-lucide="printer" className="w-3.5 h-3.5 text-cyan-400"></i>
+            <span className="hidden sm:inline">Print Dispatch</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Interactive Day Navigator Strip */}
+      <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
+        {days.map((d, idx) => {
+          const isSelected = idx === selectedDayIdx;
+          const hasMaint = d.maintenance_hours > 0;
+          return (
+            <button
+              key={d.date}
+              onClick={() => {
+                setSelectedDayIdx(idx);
+                setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50);
+              }}
+              className={`flex-shrink-0 p-3 rounded-xl border text-left transition-all min-w-[130px] ${
+                isSelected
+                  ? 'bg-cyan-950/40 border-cyan-500 shadow-lg shadow-cyan-950/50 ring-1 ring-cyan-500/50'
+                  : 'bg-[#0b1329]/80 border-factory-border/50 hover:border-slate-600 hover:bg-slate-800/40'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className={`text-[10px] uppercase font-bold ${isSelected ? 'text-cyan-400' : 'text-slate-400'}`}>
+                  {d.rel_label}
+                </span>
+                {hasMaint && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title="Maintenance Scheduled"></span>
+                )}
+              </div>
+              <div className="text-xs font-bold text-white">{d.formatted_date.split(',')[0]}</div>
+              <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+                <span>{d.jobs_count} jobs</span>
+                <strong className={isSelected ? 'text-cyan-300' : 'text-slate-300'}>{d.total_kg} kg</strong>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Selected Day KPI Summary Bar */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+        <div className="glass-card p-3.5 border border-factory-border/50 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-cyan-950/60 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+            <i data-lucide="package" className="w-5 h-5"></i>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-bold text-slate-400">Planned Dyeing</div>
+            <div className="text-sm font-bold text-white">{currentDay.total_kg} kg</div>
+          </div>
+        </div>
+
+        <div className="glass-card p-3.5 border border-factory-border/50 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-emerald-950/60 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+            <i data-lucide="check-circle-2" className="w-5 h-5"></i>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-bold text-slate-400">Production Batches</div>
+            <div className="text-sm font-bold text-white">{currentDay.jobs_count} scheduled</div>
+          </div>
+        </div>
+
+        <div className="glass-card p-3.5 border border-factory-border/50 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-blue-950/60 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+            <i data-lucide="clock" className="w-5 h-5"></i>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-bold text-slate-400">Changeovers / Setup</div>
+            <div className="text-sm font-bold text-white">{currentDay.changeover_min} mins total</div>
+          </div>
+        </div>
+
+        <div className="glass-card p-3.5 border border-factory-border/50 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-amber-950/60 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+            <i data-lucide="wrench" className="w-5 h-5"></i>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-bold text-slate-400">Maintenance Downtime</div>
+            <div className="text-sm font-bold text-amber-300">{currentDay.maintenance_hours} hrs</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Shifts Breakdown for Selected Day */}
+      <div className="space-y-4">
+        {['SHIFT_A', 'SHIFT_B', 'SHIFT_C'].map(shiftKey => {
+          const shift = currentDay.shifts[shiftKey];
+          const tasks = shift?.tasks || [];
+          return (
+            <div key={shiftKey} className="glass-panel p-5 border border-factory-border/60 space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                  <h3 className="text-sm font-bold text-white">{shift.name}</h3>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">
+                  {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
+                </span>
+              </div>
+
+              {tasks.length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800/50 text-xs text-slate-500 italic text-center">
+                  No active production or maintenance scheduled in this shift. Vessel capacity in reserve.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {tasks.map((task, tIdx) => {
+                    if (task.type === 'MAINTENANCE') {
+                      return (
+                        <div
+                          key={task.id || tIdx}
+                          className="p-4 rounded-xl border border-amber-500/50 bg-amber-950/30 text-amber-100 flex flex-col justify-between shadow-lg"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/30 text-amber-300 border border-amber-500/50 flex items-center gap-1">
+                                <i data-lucide="wrench" className="w-2.5 h-2.5 text-amber-400"></i>
+                                <span>MAINTENANCE MODE</span>
+                              </span>
+                              <span className="text-[11px] font-bold text-amber-300">
+                                {task.start_time_str} – {task.end_time_str} ({task.duration_hours}h)
+                              </span>
+                            </div>
+                            <h4 className="text-xs font-bold text-white">{task.machine_name}</h4>
+                            <p className="text-[11px] text-amber-200 mt-1">{task.title}</p>
+                            {task.notes && (
+                              <p className="text-[10px] text-amber-300/80 italic mt-1.5">{task.notes}</p>
+                            )}
+                          </div>
+                          <div className="mt-3 pt-2.5 border-t border-amber-500/30 text-[10px] text-amber-400 flex items-center justify-between">
+                            <span>Status: {task.status}</span>
+                            <span className="font-semibold">Vessel Reserved</span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Production Task Card
+                    return (
+                      <div
+                        key={task.id || tIdx}
+                        className="p-4 rounded-xl border border-factory-border/70 bg-[#070c18] hover:border-cyan-500/60 transition-all flex flex-col justify-between shadow-lg group"
+                      >
+                        <div>
+                          {/* Card Header: Timing & Freeze status */}
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-xs font-bold text-cyan-300 flex items-center gap-1">
+                              <i data-lucide="clock" className="w-3 h-3 text-cyan-400"></i>
+                              <span>{task.start_time_str} – {task.end_time_str}</span>
+                              <span className="text-[10px] text-slate-400 font-normal">({task.duration_min}m)</span>
+                            </span>
+
+                            {task.is_locked ? (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-0.5">
+                                <i data-lucide="lock" className="w-2.5 h-2.5"></i>
+                                <span>{task.freeze_level === 'LOCKED' ? 'Locked' : 'Mostly Locked'}</span>
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                Flexible
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Machine & Target Job */}
+                          <div className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                            <i data-lucide="cpu" className="w-3 h-3 text-slate-400"></i>
+                            <span>{task.machine_name}</span>
+                          </div>
+
+                          {/* Order Details & Colour Swatch */}
+                          <div className="mt-2.5 flex items-start gap-2.5">
+                            <span
+                              className="w-4 h-4 rounded-full border border-white/40 shadow-sm shrink-0 mt-0.5"
+                              style={{
+                                backgroundColor:
+                                  task.colour_code === 'WHITE' ? '#ffffff' :
+                                  task.colour_code === 'ROYAL_BLUE' ? '#2563eb' :
+                                  task.colour_code === 'DEEP_NAVY' ? '#1e3a8a' :
+                                  task.colour_code === 'JET_BLACK' ? '#0f172a' :
+                                  task.colour_code === 'SCARLET_RED' ? '#dc2626' :
+                                  task.colour_code === 'PASTEL_PINK' ? '#f472b6' :
+                                  task.colour_code === 'SKY_BLUE' ? '#38bdf8' : '#eab308'
+                              }}
+                            ></span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-white">{task.order_number}</span>
+                                <span className="text-[10px] text-slate-400 truncate">• {task.customer_name}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-300 font-medium">
+                                <strong className="text-white">{task.quantity_kg} kg</strong> {task.cloth_type}
+                              </div>
+                              <div className="text-[10px] text-cyan-400">
+                                Shade: {task.colour_name}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Changeover Cleaning Requirement */}
+                          {task.changeover_min > 0 && (
+                            <div className="mt-2.5 p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-[10px] text-amber-300/90 flex items-center gap-1.5">
+                              <i data-lucide="sparkles" className="w-3 h-3 text-amber-400 shrink-0"></i>
+                              <span>Clean / Setup: <strong>{task.changeover_min} min</strong> ({task.cleaning_min}m wash)</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Card Footer: Operator & Action */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
+                          <span className="flex items-center gap-1">
+                            <i data-lucide="user" className="w-3 h-3 text-slate-500"></i>
+                            <span>{task.operator_name}</span>
+                          </span>
+
+                          <button
+                            onClick={() => onSelectOrder({ id: task.order_id, order_number: task.order_number })}
+                            className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 hover:text-white text-slate-300 font-bold transition-all text-[10px]"
+                          >
+                            Order Details
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 5. MACHINES & CHANGEOVER MATRIX COMPONENT
+function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingMachine, setEditingMachine] = useState(null);
+  const [maintainingMachine, setMaintainingMachine] = useState(null);
+  const [deletingMachine, setDeletingMachine] = useState(null);
+
+  // Changeover matrix filtering & testing
+  const [selectedFabric, setSelectedFabric] = useState('Cotton');
+  const [selectedMachType, setSelectedMachType] = useState('JET_DYEING');
+  const [matrixData, setMatrixData] = useState(changeoverMatrix);
+  const [loadingMatrix, setLoadingMatrix] = useState(false);
+
+  // Ad-hoc transition test
+  const [testFromColour, setTestFromColour] = useState('JET_BLACK');
+  const [testToColour, setTestToColour] = useState('WHITE');
+  const [testResult, setTestResult] = useState(null);
+  const [calculatingTest, setCalculatingTest] = useState(false);
+
+  // Reload changeover matrix on fabric / machine type filter
+  const reloadMatrix = async (fab, mType) => {
+    setLoadingMatrix(true);
+    try {
+      const res = await fetch(`/api/schedule/changeover-matrix?fabric=${encodeURIComponent(fab)}&machine_type=${encodeURIComponent(mType)}`);
+      const data = await res.json();
+      setMatrixData(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingMatrix(false);
+      setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50);
+    }
+  };
+
+  const handleCalculateTest = async () => {
+    setCalculatingTest(true);
+    try {
+      const res = await fetch(`/api/schedule/changeover-calculate?from_colour=${testFromColour}&to_colour=${testToColour}&from_fabric=${selectedFabric}&to_fabric=${selectedFabric}&machine_type=${selectedMachType}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      setTestResult(data);
+    } catch (e) {
+      if (showToast) showToast('Calculator error: ' + e.message, 'error');
+    } finally {
+      setCalculatingTest(false);
+    }
+  };
+
+  const handleCompleteMaintenance = async (machId) => {
+    try {
+      const res = await fetch(`/api/machines/${machId}/complete-maintenance`, { method: 'POST' });
+      const data = await res.json();
+      if (showToast) showToast(data.message || 'Machine returned to active service!');
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      if (showToast) showToast('Failed to complete maintenance: ' + e.message, 'error');
+    }
+  };
+
+  const totalMachines = machines.length;
+  const inMaintenance = machines.filter(m => m.status === 'MAINTENANCE' || m.active_maintenance).length;
+  const available = machines.filter(m => m.status === 'AVAILABLE').length;
+
+  return (
+    <div className="space-y-6">
+      {/* Fleet Overview Header */}
+      <div className="glass-panel p-5 border border-factory-border/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-base font-bold text-white tracking-wide">Dyeing Vessel Fleet & Maintenance Management</h2>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+              Fleet Control
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Manage vessel capacities, add new units, configure maintenance downtime with auto-rescheduling, and optimize changeovers.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
+            <span className="text-slate-400">Total: <strong className="text-white">{totalMachines}</strong></span>
+            <span className="text-emerald-400">Available: <strong>{available}</strong></span>
+            <span className="text-amber-400">In Maint: <strong>{inMaintenance}</strong></span>
+          </div>
+
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-xs transition-all shadow-md shadow-cyan-900/30"
+          >
+            <i data-lucide="plus-circle" className="w-4 h-4"></i>
+            <span>Add New Machine</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Machine Fleet Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {machines.map(m => {
+          const isMaint = m.status === 'MAINTENANCE' || !!m.active_maintenance;
+          const maint = m.active_maintenance;
+          return (
+            <div
+              key={m.id}
+              className={`p-4 rounded-xl border flex flex-col justify-between transition-all shadow-lg ${
+                isMaint
+                  ? 'bg-amber-950/20 border-amber-500/60 shadow-amber-950/30'
+                  : 'bg-[#070c18] border-factory-border/70 hover:border-slate-600'
+              }`}
+            >
+              <div>
+                {/* Header: Code + Status Badge */}
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{m.code}</span>
+                  {isMaint ? (
+                    <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-1">
+                      <i data-lucide="wrench" className="w-2.5 h-2.5 text-amber-400"></i>
+                      <span>IN MAINTENANCE ({maint?.remaining_hours || 4}h)</span>
+                    </span>
+                  ) : m.status === 'RUNNING' ? (
+                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                      RUNNING
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      <span>AVAILABLE</span>
+                    </span>
+                  )}
+                </div>
+
+                <h4 className="text-sm font-bold text-white">{m.name}</h4>
+                <div className="text-[11px] text-cyan-400 font-medium mt-0.5">
+                  {m.machine_type.replace('_', ' ')} • Cap: <strong>{m.max_batch_kg} kg</strong> (Min: {m.min_batch_kg}kg)
+                </div>
+
+                {/* Specs List */}
+                <div className="mt-3 pt-2.5 border-t border-slate-800/80 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-slate-400">
+                  <div>Efficiency: <strong className="text-slate-200">{(m.efficiency * 100).toFixed(0)}%</strong></div>
+                  <div>Speed: <strong className="text-slate-200">{m.processing_speed}x</strong></div>
+                  <div>Power: <strong className="text-slate-300">{m.power_kw} kW</strong></div>
+                  <div>Steam: <strong className="text-slate-300">{m.steam_kg_hr} kg/h</strong></div>
+                  <div className="col-span-2 truncate">
+                    Fabrics: <span className="text-slate-300">{m.compatible_cloth_types || 'All Fabrics'}</span>
+                  </div>
+                </div>
+
+                {/* Maintenance Detail if active */}
+                {isMaint && maint && (
+                  <div className="mt-3 p-2.5 rounded-lg bg-amber-950/40 border border-amber-500/40 text-[11px] text-amber-200">
+                    <div className="font-bold flex items-center gap-1 text-amber-300">
+                      <i data-lucide="alert-circle" className="w-3 h-3"></i>
+                      <span>{maint.title}</span>
+                    </div>
+                    <div className="text-[10px] text-amber-300/80 mt-0.5">
+                      Ends: {new Date(maint.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({maint.remaining_hours} hrs left)
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons Footer */}
+              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                {isMaint ? (
+                  <button
+                    onClick={() => handleCompleteMaintenance(m.id)}
+                    className="flex-1 py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 shadow"
+                  >
+                    <i data-lucide="check" className="w-3.5 h-3.5"></i>
+                    <span>Return to Service</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setMaintainingMachine(m)}
+                    className="flex-1 py-1.5 px-2 bg-amber-600/30 hover:bg-amber-600 hover:text-white text-amber-300 border border-amber-500/40 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1"
+                  >
+                    <i data-lucide="wrench" className="w-3.5 h-3.5"></i>
+                    <span>Maintenance</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setEditingMachine(m)}
+                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-all border border-slate-700"
+                  title="Edit Machine Specifications"
+                >
+                  <i data-lucide="edit-3" className="w-3.5 h-3.5"></i>
+                </button>
+
+                <button
+                  onClick={() => setDeletingMachine(m)}
+                  className="p-1.5 bg-rose-950/40 hover:bg-rose-900 text-rose-300 rounded-lg transition-all border border-rose-800/50"
+                  title="Remove Machine from Fleet"
+                >
+                  <i data-lucide="trash-2" className="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Multi-Dimensional Colour Changeover Heatmap & Calculator */}
+      <div className="glass-panel p-5 border border-factory-border/60 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div>
+            <h3 className="text-sm font-bold text-white">Sequence-Dependent Changeover Matrix & Penalty Inspector</h3>
+            <p className="text-xs text-slate-400">Shows changeover cleaning time (min), water usage (L), and caustic chemical stripping costs</p>
+          </div>
+
+          {/* Filter selectors */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <span>Fabric:</span>
+              <select
+                value={selectedFabric}
+                onChange={e => {
+                  setSelectedFabric(e.target.value);
+                  reloadMatrix(e.target.value, selectedMachType);
+                }}
+                className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white"
+              >
+                <option value="Cotton">Cotton</option>
+                <option value="Polyester">Polyester</option>
+                <option value="Poly-Cotton Blend">Poly-Cotton Blend</option>
+                <option value="Rayon Viscose">Rayon Viscose</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <span>Vessel:</span>
+              <select
+                value={selectedMachType}
+                onChange={e => {
+                  setSelectedMachType(e.target.value);
+                  reloadMatrix(selectedFabric, e.target.value);
+                }}
+                className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white"
+              >
+                <option value="JET_DYEING">Jet Dyeing</option>
+                <option value="SOFT_FLOW">Soft Flow</option>
+                <option value="JIGGER">Jigger Dyeing</option>
+                <option value="WINCH">Winch Vessel</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Changeover Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-center text-xs text-slate-300">
             <thead className="bg-slate-900/90 text-[10px] uppercase font-bold text-slate-400">
               <tr>
                 <th className="py-2.5 px-3 text-left">From \ To</th>
-                {changeoverMatrix.map((r, i) => (
+                {(matrixData || []).map((r, i) => (
                   <th key={i} className="py-2.5 px-3">{r.from_colour}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
-              {changeoverMatrix.map((row, i) => (
+              {(matrixData || []).map((row, i) => (
                 <tr key={i} className="hover:bg-slate-800/30">
                   <td className="py-2.5 px-3 text-left font-bold font-sans text-slate-200">{row.from_colour}</td>
-                  {Object.entries(row.transitions).map(([toCol, data], j) => {
+                  {Object.entries(row.transitions || {}).map(([toCol, data], j) => {
                     const dur = data.changeover_min;
                     const isSevere = dur > 45;
                     const isMinimal = dur <= 10;
@@ -2097,6 +2619,618 @@ function MachinesView({ machines, changeoverMatrix }) {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Ad-Hoc Changeover Transition Calculator Sandbox */}
+        <div className="mt-4 p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <i data-lucide="sparkles" className="w-3.5 h-3.5 text-cyan-400"></i>
+              <span>Ad-Hoc Changeover Transition Impact Calculator</span>
+            </span>
+            <span className="text-[11px] text-slate-400">Test penalty between any two consecutive dye shades</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+            <div>
+              <label className="text-[10px] text-slate-400 block mb-1">Preceding Colour (From)</label>
+              <select
+                value={testFromColour}
+                onChange={e => setTestFromColour(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+              >
+                {['WHITE', 'SKY_BLUE', 'GOLDEN_YELLOW', 'ROYAL_BLUE', 'SCARLET_RED', 'DEEP_NAVY', 'JET_BLACK'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-slate-400 block mb-1">Succeeding Colour (To)</label>
+              <select
+                value={testToColour}
+                onChange={e => setTestToColour(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+              >
+                {['WHITE', 'SKY_BLUE', 'GOLDEN_YELLOW', 'ROYAL_BLUE', 'SCARLET_RED', 'DEEP_NAVY', 'JET_BLACK'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={handleCalculateTest}
+              disabled={calculatingTest}
+              className="py-1.5 px-4 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded transition-all flex items-center justify-center gap-1.5 shadow"
+            >
+              <i data-lucide="calculator" className="w-3.5 h-3.5"></i>
+              <span>Calculate Impact</span>
+            </button>
+
+            {testResult && (
+              <div className="p-2 rounded bg-[#070c18] border border-cyan-500/40 text-[11px] space-y-0.5 text-slate-300">
+                <div>Time: <strong className="text-cyan-300">{testResult.changeover_min} min</strong> ({testResult.cleaning_min}m wash)</div>
+                <div>Water: <strong className="text-slate-200">{testResult.water_litres} L</strong> • Cost: <strong className="text-emerald-400">₹{testResult.chemical_cost_inr}</strong></div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      {showAddModal && (
+        <AddMachineModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            setShowAddModal(false);
+            if (onRefresh) onRefresh();
+            if (showToast) showToast('New machine successfully added to factory fleet!');
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {editingMachine && (
+        <EditMachineModal
+          machine={editingMachine}
+          onClose={() => setEditingMachine(null)}
+          onSuccess={() => {
+            setEditingMachine(null);
+            if (onRefresh) onRefresh();
+            if (showToast) showToast(`Machine ${editingMachine.name} updated successfully!`);
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {maintainingMachine && (
+        <ScheduleMaintenanceModal
+          machine={maintainingMachine}
+          onClose={() => setMaintainingMachine(null)}
+          onSuccess={(res) => {
+            setMaintainingMachine(null);
+            if (onRefresh) onRefresh();
+            if (showToast) showToast(res.summary || `Maintenance scheduled for ${maintainingMachine.name}!`);
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {deletingMachine && (
+        <DeleteMachineModal
+          machine={deletingMachine}
+          onClose={() => setDeletingMachine(null)}
+          onSuccess={(msg) => {
+            setDeletingMachine(null);
+            if (onRefresh) onRefresh();
+            if (showToast) showToast(msg);
+          }}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+}
+
+// 5A. ADD MACHINE MODAL
+function AddMachineModal({ onClose, onSuccess, showToast }) {
+  const [form, setForm] = useState({
+    name: '',
+    code: '',
+    machine_type: 'JET_DYEING',
+    capacity_kg: 600,
+    min_batch_kg: 100,
+    max_batch_kg: 600,
+    processing_speed: 1.0,
+    efficiency: 0.92,
+    power_kw: 50,
+    water_m3_hr: 4.0,
+    steam_kg_hr: 650,
+    compatible_cloth_types: 'Cotton,Polyester,Poly-Cotton Blend'
+  });
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/machines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to create machine');
+      }
+      onSuccess();
+    } catch (err) {
+      if (showToast) showToast(err.message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel p-6 max-w-lg w-full border border-factory-border/80 space-y-4 shadow-2xl">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <i data-lucide="plus-circle" className="w-4 h-4 text-cyan-400"></i>
+            <span>Add New Dyeing Machine</span>
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-slate-400 block mb-1">Machine Name *</label>
+              <input
+                type="text"
+                required
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Jet Dyeing Machine M7"
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 block mb-1">Machine Code (Optional)</label>
+              <input
+                type="text"
+                value={form.code}
+                onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })}
+                placeholder="Auto-generated if blank"
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-slate-400 block mb-1">Machine Type</label>
+              <select
+                value={form.machine_type}
+                onChange={e => setForm({ ...form, machine_type: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              >
+                <option value="JET_DYEING">Jet Dyeing Machine</option>
+                <option value="SOFT_FLOW">Soft Flow Vessel</option>
+                <option value="JIGGER">Jigger Dyeing Machine</option>
+                <option value="WINCH">Winch Dyeing Vessel</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-slate-400 block mb-1">Max Batch Capacity (kg) *</label>
+              <input
+                type="number"
+                required
+                value={form.max_batch_kg}
+                onChange={e => setForm({ ...form, max_batch_kg: parseFloat(e.target.value) || 0, capacity_kg: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-slate-400 block mb-1">Min Batch (kg)</label>
+              <input
+                type="number"
+                value={form.min_batch_kg}
+                onChange={e => setForm({ ...form, min_batch_kg: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 block mb-1">Efficiency (0.8-1.0)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={form.efficiency}
+                onChange={e => setForm({ ...form, efficiency: parseFloat(e.target.value) || 0.9 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 block mb-1">Speed Factor</label>
+              <input
+                type="number"
+                step="0.05"
+                value={form.processing_speed}
+                onChange={e => setForm({ ...form, processing_speed: parseFloat(e.target.value) || 1.0 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-slate-400 block mb-1">Power (kW)</label>
+              <input
+                type="number"
+                value={form.power_kw}
+                onChange={e => setForm({ ...form, power_kw: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 block mb-1">Water (m³/h)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.water_m3_hr}
+                onChange={e => setForm({ ...form, water_m3_hr: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 block mb-1">Steam (kg/h)</label>
+              <input
+                type="number"
+                value={form.steam_kg_hr}
+                onChange={e => setForm({ ...form, steam_kg_hr: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Compatible Fabrics (comma-separated)</label>
+            <input
+              type="text"
+              value={form.compatible_cloth_types}
+              onChange={e => setForm({ ...form, compatible_cloth_types: e.target.value })}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-300 text-xs">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow disabled:opacity-50"
+            >
+              {submitting ? 'Adding...' : 'Add Machine to Fleet'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// 5B. EDIT MACHINE MODAL
+function EditMachineModal({ machine, onClose, onSuccess, showToast }) {
+  const [form, setForm] = useState({
+    name: machine.name,
+    machine_type: machine.machine_type,
+    max_batch_kg: machine.max_batch_kg,
+    min_batch_kg: machine.min_batch_kg,
+    efficiency: machine.efficiency,
+    processing_speed: machine.processing_speed,
+    power_kw: machine.power_kw,
+    water_m3_hr: machine.water_m3_hr,
+    steam_kg_hr: machine.steam_kg_hr,
+    compatible_cloth_types: machine.compatible_cloth_types || 'Cotton,Polyester'
+  });
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/machines/${machine.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, capacity_kg: form.max_batch_kg })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to update machine');
+      }
+      onSuccess();
+    } catch (err) {
+      if (showToast) showToast(err.message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel p-6 max-w-lg w-full border border-factory-border/80 space-y-4 shadow-2xl">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <i data-lucide="edit-3" className="w-4 h-4 text-cyan-400"></i>
+            <span>Edit Machine: {machine.code}</span>
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+          <div>
+            <label className="text-slate-400 block mb-1">Machine Name</label>
+            <input
+              type="text"
+              required
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-slate-400 block mb-1">Max Batch Capacity (kg)</label>
+              <input
+                type="number"
+                required
+                value={form.max_batch_kg}
+                onChange={e => setForm({ ...form, max_batch_kg: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 block mb-1">Min Batch (kg)</label>
+              <input
+                type="number"
+                value={form.min_batch_kg}
+                onChange={e => setForm({ ...form, min_batch_kg: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-slate-400 block mb-1">Efficiency (0.80 - 1.00)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={form.efficiency}
+                onChange={e => setForm({ ...form, efficiency: parseFloat(e.target.value) || 0.9 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 block mb-1">Processing Speed Factor</label>
+              <input
+                type="number"
+                step="0.05"
+                value={form.processing_speed}
+                onChange={e => setForm({ ...form, processing_speed: parseFloat(e.target.value) || 1.0 })}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Compatible Fabrics (comma-separated)</label>
+            <input
+              type="text"
+              value={form.compatible_cloth_types}
+              onChange={e => setForm({ ...form, compatible_cloth_types: e.target.value })}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-300 text-xs">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow disabled:opacity-50"
+            >
+              {submitting ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// 5C. SCHEDULE MAINTENANCE MODAL (Prompts for duration in hours)
+function ScheduleMaintenanceModal({ machine, onClose, onSuccess, showToast }) {
+  const [hours, setHours] = useState(6.0);
+  const [title, setTitle] = useState('Scheduled Preventive Maintenance & Descaling');
+  const [maintType, setMaintType] = useState('PREVENTIVE');
+  const [notes, setNotes] = useState('Inspect seals, pump impellers, and heat exchanger pipes.');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/machines/${machine.id}/maintenance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hours: parseFloat(hours) || 4.0,
+          title,
+          maintenance_type: maintType,
+          notes
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to schedule maintenance');
+      }
+      const data = await res.json();
+      onSuccess(data);
+    } catch (err) {
+      if (showToast) showToast(err.message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel p-6 max-w-md w-full border border-amber-500/50 space-y-4 shadow-2xl">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+          <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2">
+            <i data-lucide="wrench" className="w-4 h-4 text-amber-400"></i>
+            <span>Set Machine Maintenance Mode</span>
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">✕</button>
+        </div>
+
+        <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-500/30 text-xs text-amber-200">
+          Target Machine: <strong>{machine.name} ({machine.code})</strong>
+          <p className="text-[10px] text-amber-300/80 mt-1">
+            Setting maintenance mode will reserve this vessel and <strong>automatically reschedule colliding jobs</strong> around the downtime.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+          <div>
+            <label className="text-slate-300 font-bold block mb-1">
+              Maintenance Duration (How many hours?) *
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.5"
+                min="0.5"
+                max="720"
+                required
+                value={hours}
+                onChange={e => setHours(e.target.value)}
+                className="w-full bg-slate-900 border border-amber-500/50 rounded px-3 py-2 text-white font-mono font-bold text-sm"
+              />
+              <span className="text-slate-400 text-xs">hours</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Maintenance Title / Reason</label>
+            <input
+              type="text"
+              required
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Maintenance Category</label>
+            <select
+              value={maintType}
+              onChange={e => setMaintType(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+            >
+              <option value="PREVENTIVE">Preventive Maintenance (Routine)</option>
+              <option value="EMERGENCY">Urgent Mechanical Repair</option>
+              <option value="OVERHAUL">Deep Cleaning & Acid Boil-Out Overhaul</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Maintenance Notes & Instructions</label>
+            <textarea
+              rows="2"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+            ></textarea>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-300 text-xs">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 rounded bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-lg shadow-amber-900/40 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <i data-lucide="wrench" className="w-3.5 h-3.5"></i>
+              <span>{submitting ? 'Rescheduling...' : 'Apply Maintenance & Reschedule'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// 5D. DELETE MACHINE CONFIRMATION MODAL
+function DeleteMachineModal({ machine, onClose, onSuccess, showToast }) {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleDelete = async () => {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/machines/${machine.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to delete machine');
+      }
+      const data = await res.json();
+      onSuccess(data.message);
+    } catch (err) {
+      if (showToast) showToast(err.message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel p-6 max-w-md w-full border border-rose-500/50 space-y-4 shadow-2xl">
+        <div className="flex items-center gap-3 text-rose-400">
+          <i data-lucide="alert-triangle" className="w-6 h-6"></i>
+          <h3 className="text-sm font-bold text-white">Remove Dyeing Machine</h3>
+        </div>
+
+        <p className="text-xs text-slate-300">
+          Are you sure you want to remove <strong className="text-white">{machine.name} ({machine.code})</strong> from the factory fleet?
+        </p>
+
+        <div className="p-3 rounded-lg bg-rose-950/30 border border-rose-500/30 text-[11px] text-rose-300">
+          Any production orders currently scheduled on this machine will be <strong>automatically reassigned</strong> across remaining available machines by the TOC scheduler.
+        </div>
+
+        <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <button onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-300 text-xs">
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={submitting}
+            className="px-4 py-2 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow disabled:opacity-50"
+          >
+            {submitting ? 'Removing...' : 'Confirm Remove Machine'}
+          </button>
         </div>
       </div>
     </div>

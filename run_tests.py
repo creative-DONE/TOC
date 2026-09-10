@@ -13,6 +13,7 @@ from backend.tests.test_readiness import test_order_readiness_evaluation, test_s
 from backend.tests.test_rush_insertion import test_rush_order_insertion_evaluation
 from backend.tests.test_rescheduling import test_machine_breakdown_dynamic_rescheduling
 from backend.tests.test_reports import test_excel_and_pdf_generation
+from backend.tests.test_machine_management import test_machine_crud_and_maintenance
 
 def run_all():
     db = SessionLocal()
@@ -29,6 +30,7 @@ def run_all():
         ("Smart Ready Order Swap", lambda: test_smart_ready_swap(db)),
         ("Smart Rush Order Insertion Minimal Damage", lambda: test_rush_order_insertion_evaluation(db)),
         ("Dynamic Machine Breakdown Rescheduling", lambda: test_machine_breakdown_dynamic_rescheduling(db)),
+        ("Machine CRUD & Dynamic Maintenance Rescheduling", lambda: test_machine_crud_and_maintenance(db)),
         ("Excel & PDF Production Report Generation", lambda: test_excel_and_pdf_generation(db)),
     ]
 

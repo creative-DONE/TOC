@@ -136,6 +136,70 @@ def test_all_endpoints():
     assert res_cancel.json()["success"] is True
     print(f"  [PASS] POST /api/orders/{temp_id}/cancel (Temporary order cancelled & capacity released)")
 
+    # 15. Test Daily Production Agenda (Day-to-Day dispatch & shift breakdown)
+    res_agenda = client.get("/api/schedule/daily-agenda?days=7")
+    assert res_agenda.status_code == 200
+    agenda = res_agenda.json()
+    assert "days" in agenda
+    assert len(agenda["days"]) == 7
+    assert "shifts" in agenda["days"][0]
+    print(f"  [PASS] GET /api/schedule/daily-agenda ({len(agenda['days'])} days, {agenda['total_planned_kg']}kg planned across shifts)")
+
+    # 16. Test Machine Management: Add Machine
+    import uuid
+    test_code = f"JET-E2E-{uuid.uuid4().hex[:4].upper()}"
+    res_add_mach = client.post("/api/machines", json={
+        "code": test_code,
+        "name": "E2E Automated Dyeing Vessel",
+        "machine_type": "JET_DYEING",
+        "capacity_kg": 500.0,
+        "min_batch_kg": 80.0,
+        "max_batch_kg": 500.0,
+        "efficiency": 0.94,
+        "processing_speed": 1.05,
+        "power_kw": 48.0,
+        "water_m3_hr": 3.8,
+        "steam_kg_hr": 620.0,
+        "compatible_cloth_types": "Cotton,Polyester"
+    })
+    assert res_add_mach.status_code == 201
+    created_m = res_add_mach.json()
+    m_id = created_m["id"]
+    print(f"  [PASS] POST /api/machines (Created machine #{m_id}: {created_m['name']})")
+
+    # 17. Test Machine Maintenance Mode with duration in hours
+    res_maint = client.post(f"/api/machines/{m_id}/maintenance", json={
+        "hours": 4.5,
+        "title": "Preventive Nozzle Cleaning",
+        "maintenance_type": "PREVENTIVE",
+        "notes": "Routine servicing"
+    })
+    assert res_maint.status_code == 200
+    assert res_maint.json()["hours"] == 4.5
+    print(f"  [PASS] POST /api/machines/{m_id}/maintenance (4.5h maintenance scheduled, jobs rescheduled)")
+
+    # 18. Test Complete Maintenance Mode
+    res_comp_maint = client.post(f"/api/machines/{m_id}/complete-maintenance")
+    assert res_comp_maint.status_code == 200
+    assert res_comp_maint.json()["status"] == "AVAILABLE"
+    print(f"  [PASS] POST /api/machines/{m_id}/complete-maintenance (Returned to service)")
+
+    # 19. Test Delete Machine
+    res_del_m = client.delete(f"/api/machines/{m_id}")
+    assert res_del_m.status_code == 200
+    assert res_del_m.json()["success"] is True
+    print(f"  [PASS] DELETE /api/machines/{m_id} (Cleanly deleted, fleet updated)")
+
+    # 20. Test Changeover Matrix & Calculator
+    res_co_mat = client.get("/api/schedule/changeover-matrix?fabric=Polyester&machine_type=JET_DYEING")
+    assert res_co_mat.status_code == 200
+    assert len(res_co_mat.json()) > 0
+    res_co_calc = client.post("/api/schedule/changeover-calculate?from_colour=JET_BLACK&to_colour=WHITE&from_fabric=Cotton&to_fabric=Cotton")
+    assert res_co_calc.status_code == 200
+    co_detail = res_co_calc.json()
+    assert co_detail["changeover_min"] > 30.0
+    print(f"  [PASS] GET /api/schedule/changeover-matrix & /changeover-calculate (Dark-to-Light penalty: {co_detail['changeover_min']}m)")
+
     print("================================================================")
     print("  ALL END-TO-END HTTP INTEGRATION TESTS PASSED!                 ")
     print("================================================================")

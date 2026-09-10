@@ -68,6 +68,44 @@ class OrderResponse(BaseModel):
         from_attributes = True
 
 # Machine Schemas
+class MachineCreate(BaseModel):
+    code: Optional[str] = None
+    name: str
+    machine_type: str = "JET_DYEING"
+    capacity_kg: float
+    min_batch_kg: float = 50.0
+    max_batch_kg: float
+    processing_speed: float = 1.0
+    efficiency: float = 0.92
+    status: str = "AVAILABLE"
+    power_kw: float = 45.0
+    water_m3_hr: float = 3.5
+    steam_kg_hr: float = 600.0
+    compatible_cloth_types: Optional[str] = "Cotton,Polyester,Blended fabric,Rayon Viscose"
+    compatible_colours: Optional[str] = "ALL"
+
+class MachineUpdate(BaseModel):
+    name: Optional[str] = None
+    machine_type: Optional[str] = None
+    capacity_kg: Optional[float] = None
+    min_batch_kg: Optional[float] = None
+    max_batch_kg: Optional[float] = None
+    processing_speed: Optional[float] = None
+    efficiency: Optional[float] = None
+    status: Optional[str] = None
+    power_kw: Optional[float] = None
+    water_m3_hr: Optional[float] = None
+    steam_kg_hr: Optional[float] = None
+    compatible_cloth_types: Optional[str] = None
+    compatible_colours: Optional[str] = None
+
+class MachineMaintenanceScheduleRequest(BaseModel):
+    hours: float
+    title: Optional[str] = "Scheduled Preventive Maintenance"
+    start_time: Optional[datetime] = None
+    maintenance_type: Optional[str] = "PREVENTIVE" # PREVENTIVE, EMERGENCY, OVERHAUL
+    notes: Optional[str] = None
+
 class MachineResponse(BaseModel):
     id: int
     code: str
@@ -83,11 +121,14 @@ class MachineResponse(BaseModel):
     power_kw: float
     water_m3_hr: float
     steam_kg_hr: float
+    compatible_cloth_types: Optional[str] = None
+    compatible_colours: Optional[str] = None
     current_workload_kg: float
     utilization_pct: float = 0.0
     mtbf_hours: float = 200.0
     mttr_hours: float = 4.0
     reliability_pct: float = 96.0
+    active_maintenance: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True

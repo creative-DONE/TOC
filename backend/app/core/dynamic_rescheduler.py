@@ -173,3 +173,160 @@ def handle_material_delay_disruption(
         "backfilled_orders": backfilled_order_numbers,
         "impact_summary": f"Moved {len(delayed_order_numbers)} orders past arrival date; backfilled {len(backfilled_order_numbers)} machine slots with ready stock."
     }
+
+def handle_machine_maintenance_scheduling(
+    db: Session,
+    machine_id: int,
+    duration_hours: float,
+    title: str = "Scheduled Preventive Maintenance",
+    start_time: Optional[datetime] = None,
+    maintenance_type: str = "PREVENTIVE",
+    notes: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Schedules a maintenance window for a machine and reschedules conflicting production jobs.
+    1. Records maintenance in MachineMaintenance table.
+    2. Updates machine status to MAINTENANCE if current.
+    3. Detects overlapping production slots [start_time, end_time].
+    4. Reroutes feasible jobs to available alternate machines, or pushes them past maintenance.
+    """
+    from app.models.factory_models import MachineMaintenance
+
+    machine = db.query(Machine).filter(Machine.id == machine_id).first()
+    if not machine:
+        raise ValueError(f"Machine #{machine_id} not found")
+
+    if not start_time:
+        start_time = datetime.utcnow()
+
+    end_time = start_time + timedelta(hours=duration_hours)
+    now = datetime.utcnow()
+
+    # If maintenance is starting now or active
+    is_active_now = (start_time <= now <= end_time) or (start_time <= now + timedelta(minutes=15))
+    if is_active_now:
+        machine.status = "MAINTENANCE"
+
+    # Create MachineMaintenance record
+    maint_rec = MachineMaintenance(
+        machine_id=machine_id,
+        title=title,
+        start_time=start_time,
+        end_time=end_time,
+        maintenance_type=maintenance_type,
+        status="IN_PROGRESS" if is_active_now else "SCHEDULED",
+        notes=notes
+    )
+    db.add(maint_rec)
+
+    # Find affected schedules on this machine during the maintenance window
+    affected_schedules = db.query(ProductionSchedule).filter(
+        ProductionSchedule.machine_id == machine_id,
+        ProductionSchedule.status.in_(["SCHEDULED", "PENDING"]),
+        ProductionSchedule.planned_start < end_time,
+        ProductionSchedule.planned_end > start_time
+    ).all()
+
+    # Find available alternate machines
+    alternate_machines = db.query(Machine).filter(
+        Machine.id != machine_id,
+        Machine.status.in_(["AVAILABLE", "RUNNING", "IDLE"])
+    ).all()
+
+    rerouted_orders = []
+    shifted_orders = []
+
+    # Sort affected schedules by planned_start
+    affected_schedules.sort(key=lambda s: s.planned_start)
+    current_reopened_clock = end_time + timedelta(minutes=20) # 20 min post-maintenance warm-up
+
+    for sched in affected_schedules:
+        order = db.query(Order).filter(Order.id == sched.order_id).first()
+        if not order:
+            continue
+
+        # Try to reroute to capable alternate machine
+        rerouted = False
+        for alt_m in alternate_machines:
+            if order.cloth_type.lower() in (alt_m.compatible_cloth_types or "").lower() and alt_m.max_batch_kg >= order.quantity_kg:
+                sched.machine_id = alt_m.id
+                order.assigned_machine_id = alt_m.id
+                sched.scheduling_reason = f"REROUTED from {machine.name} to {alt_m.name} due to scheduled maintenance ({duration_hours:.1f}h)."
+                rerouted_orders.append(order.order_number)
+                rerouted = True
+                break
+
+        if not rerouted:
+            # Shift order on this machine to after the maintenance window
+            sched.planned_start = max(current_reopened_clock, end_time + timedelta(minutes=15))
+            sched.planned_end = sched.planned_start + timedelta(minutes=sched.base_processing_min + sched.changeover_min)
+            current_reopened_clock = sched.planned_end + timedelta(minutes=15)
+            sched.scheduling_reason = f"DELAYED on {machine.name} until after {duration_hours:.1f}h maintenance finishes at {end_time.strftime('%d %b %H:%M')}."
+            shifted_orders.append(order.order_number)
+
+            if sched.planned_end > order.due_date:
+                # Add alert for due date risk
+                alert = Alert(
+                    severity=AlertSeverity.HIGH.value,
+                    alert_type="MAINTENANCE_DELAY",
+                    title=f"Order {order.order_number} Pushed Close to Deadline by Maintenance",
+                    message=f"{machine.name} {duration_hours:.1f}h maintenance shifts completion to {sched.planned_end.strftime('%d %b %H:%M')}.",
+                    related_order_id=order.id,
+                    related_machine_id=machine.id,
+                    action_recommendation="Monitor progress or authorize secondary machine shift.",
+                    is_active=True
+                )
+                db.add(alert)
+
+    db.commit()
+
+    return {
+        "machine_id": machine_id,
+        "machine_name": machine.name,
+        "maintenance_id": maint_rec.id,
+        "hours": duration_hours,
+        "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+        "affected_count": len(affected_schedules),
+        "rerouted_orders": rerouted_orders,
+        "shifted_orders": shifted_orders,
+        "summary": f"Scheduled {duration_hours:.1f}h maintenance for {machine.name}. Rescheduled {len(affected_schedules)} conflicting production jobs ({len(rerouted_orders)} rerouted, {len(shifted_orders)} shifted)."
+    }
+
+def handle_complete_maintenance(db: Session, machine_id: int) -> Dict[str, Any]:
+    """
+    Restores machine to AVAILABLE status and closes active maintenance records.
+    """
+    from app.models.factory_models import MachineMaintenance
+    from app.services.scheduler_service import SchedulerService
+
+    machine = db.query(Machine).filter(Machine.id == machine_id).first()
+    if not machine:
+        raise ValueError(f"Machine #{machine_id} not found")
+
+    machine.status = "AVAILABLE"
+
+    # Close active maintenance records
+    active_maints = db.query(MachineMaintenance).filter(
+        MachineMaintenance.machine_id == machine_id,
+        MachineMaintenance.status.in_(["IN_PROGRESS", "SCHEDULED"])
+    ).all()
+
+    for m in active_maints:
+        m.status = "COMPLETED"
+
+    db.commit()
+
+    # Re-run schedule to take advantage of available capacity
+    try:
+        scheduler = SchedulerService(db)
+        scheduler.generate_full_schedule()
+    except Exception as e:
+        print(f"Schedule re-optimization note: {e}")
+
+    return {
+        "machine_id": machine_id,
+        "machine_name": machine.name,
+        "status": "AVAILABLE",
+        "message": f"Machine {machine.name} returned to active service. Schedule re-optimized with restored capacity."
+    }

@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.models.factory_models import (
-    Machine, Material, Employee, EmployeeSkill, Colour, FactoryUtility, MachineStatus
+    Machine, MachineMaintenance, Material, Employee, EmployeeSkill, Colour, FactoryUtility, MachineStatus
 )
 from app.models.order_models import (
     Order, OrderBatch, OrderReadinessChecklist, OrderProcessStage, ReadinessStatus, OrderStatus
@@ -137,8 +137,26 @@ class SchedulerService:
             key=lambda o: (0 if o.priority == "EMERGENCY" else (1 if o.priority == "HIGH" else 2), -o.urgency_score)
         )
 
+        # Check active and upcoming maintenance windows for each machine
+        machine_maintenances = {}
+        for m in machines:
+            maints = self.db.query(MachineMaintenance).filter(
+                MachineMaintenance.machine_id == m.id,
+                MachineMaintenance.status.in_(["IN_PROGRESS", "SCHEDULED"]),
+                MachineMaintenance.end_time > self.now
+            ).all()
+            machine_maintenances[m.id] = maints
+
         # Machine timeline tracking: machine_id -> current available start time
-        machine_clocks = {m.id: self.now + timedelta(hours=1) for m in machines}
+        machine_clocks = {}
+        for m in machines:
+            init_time = self.now + timedelta(hours=1)
+            # If machine is currently in maintenance or has active window, start after maintenance
+            for maint in machine_maintenances.get(m.id, []):
+                if maint.start_time <= init_time <= maint.end_time or (m.status == "MAINTENANCE" and maint.end_time > init_time):
+                    init_time = max(init_time, maint.end_time + timedelta(minutes=20))
+            machine_clocks[m.id] = init_time
+
         machine_last_colour = {m.id: "WHITE" for m in machines}
         machine_last_fabric = {m.id: "Cotton" for m in machines}
         machine_workloads = {m.id: 0.0 for m in machines}
@@ -221,6 +239,13 @@ class SchedulerService:
 
                 slot_start = max(machine_clocks[m_id], earliest_start)
                 slot_end = slot_start + timedelta(minutes=total_slot_min)
+
+                # Ensure slot does not overlap with any scheduled maintenance window
+                for maint in machine_maintenances.get(m_id, []):
+                    if slot_start < maint.end_time and slot_end > maint.start_time:
+                        slot_start = maint.end_time + timedelta(minutes=20)
+                        slot_end = slot_start + timedelta(minutes=total_slot_min)
+
                 machine_clocks[m_id] = slot_end + timedelta(minutes=20)
 
                 # Check Freeze Window status with product deadline awareness

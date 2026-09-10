@@ -54,14 +54,21 @@ def find_best_machine_for_batch(
     1. A single machine that can accommodate the entire order without splitting, or
     2. The most efficient machine paired with balanced split batches.
     """
-    # Filter compatible machines
+    # Filter compatible machines that are not in breakdown or maintenance
     compatible = [
         m for m in available_machines
         if cloth_type.lower() in (m.compatible_cloth_types or "").lower()
-        and m.status != "BREAKDOWN"
+        and m.status not in ["BREAKDOWN", "MAINTENANCE"]
     ]
     if not compatible:
-        compatible = available_machines # fallback
+        # Fallback to compatible machines if all are currently in maintenance
+        compatible = [
+            m for m in available_machines
+            if cloth_type.lower() in (m.compatible_cloth_types or "").lower()
+            and m.status != "BREAKDOWN"
+        ]
+        if not compatible:
+            compatible = available_machines # absolute fallback
 
     # Check for direct fit without splitting
     direct_fits = [m for m in compatible if m.max_batch_kg >= order_quantity_kg >= m.min_batch_kg]
