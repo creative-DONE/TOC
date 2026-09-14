@@ -20,16 +20,21 @@ def test_machine_breakdown_dynamic_rescheduling(db):
     machine = db.query(Machine).first()
     assert machine is not None
 
-    now = datetime.utcnow()
-    res = handle_machine_breakdown_disruption(
-        db=db,
-        machine_id=machine.id,
-        breakdown_start=now,
-        duration_hours=6.0,
-        description="Test motor failure"
-    )
+    orig_status = machine.status
+    try:
+        now = datetime.utcnow()
+        res = handle_machine_breakdown_disruption(
+            db=db,
+            machine_id=machine.id,
+            breakdown_start=now,
+            duration_hours=6.0,
+            description="Test motor failure"
+        )
 
-    assert "event_id" in res
-    assert "machine_name" in res
-    assert "affected_count" in res
-    assert machine.status == "BREAKDOWN"
+        assert "event_id" in res
+        assert "machine_name" in res
+        assert "affected_count" in res
+        assert machine.status == "BREAKDOWN"
+    finally:
+        machine.status = orig_status
+        db.commit()

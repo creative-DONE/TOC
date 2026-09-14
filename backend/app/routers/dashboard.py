@@ -22,7 +22,7 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
     pending_orders = sum(1 for o in all_orders if o.status in [OrderStatus.PENDING.value, OrderStatus.SCHEDULED.value])
     
     late_orders = sum(1 for o in all_orders if o.planned_completion and o.planned_completion > o.due_date)
-    orders_at_risk = sum(1 for o in all_orders if o.buffer_penetration_pct > 66.0 or o.seven_day_rule_violated)
+    orders_at_risk = sum(1 for o in all_orders if o.buffer_penetration_pct > 66.0 or (o.planned_completion and o.planned_completion > o.due_date))
     
     on_time_pct = round(max(0.0, 100.0 - (late_orders / max(1, total_orders)) * 100.0), 1)
     total_production_kg = sum(o.quantity_kg for o in all_orders)
@@ -38,8 +38,8 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
 
     bottleneck_raw = identify_system_bottleneck(machines, all_orders, utilities, horizon_days=7)
     
-    # 3. Alerts
-    active_alerts = db.query(Alert).filter(Alert.is_active == True).order_by(Alert.created_at.desc()).limit(10).all()
+    # 3. Alerts (excluding 7-day rule alerts)
+    active_alerts = db.query(Alert).filter(Alert.is_active == True, Alert.alert_type != "SEVEN_DAY_RULE").order_by(Alert.created_at.desc()).limit(10).all()
     alerts_data = [
         {
             "id": a.id,
@@ -53,8 +53,8 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
         for a in active_alerts
     ]
 
-    # 4. 7-Day Rule Violations
-    seven_day_violations = sum(1 for o in all_orders if o.seven_day_rule_violated)
+    # 4. 7-Day Rule Violations (removed / zero)
+    seven_day_violations = 0
 
     # 5. Operating Cost sum
     schedules = db.query(ProductionSchedule).all()

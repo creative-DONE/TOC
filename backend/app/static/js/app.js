@@ -18,13 +18,14 @@ function App() {
   const [notification, setNotification] = useState(null);
   const [selectedTier, setSelectedTier] = useState('WEEKLY');
   const [dailyAgenda, setDailyAgenda] = useState(null);
+  const [planningMatrix, setPlanningMatrix] = useState(null);
   const [agendaDays, setAgendaDays] = useState(7);
 
   // Load all data
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [dashRes, schedRes, ordRes, machRes, matRes, foreRes, scoreRes, coRes, agendaRes] = await Promise.all([
+      const [dashRes, schedRes, ordRes, machRes, matRes, foreRes, scoreRes, coRes, agendaRes, matrixRes] = await Promise.all([
         fetch('/api/dashboard/overview').then(r => r.json()),
         fetch(`/api/schedule/slots?tier=${selectedTier}`).then(r => r.json()),
         fetch('/api/orders').then(r => r.json()),
@@ -33,7 +34,8 @@ function App() {
         fetch('/api/materials/forecast').then(r => r.json()),
         fetch('/api/schedule/quality-score').then(r => r.json()),
         fetch('/api/schedule/changeover-matrix').then(r => r.json()),
-        fetch(`/api/schedule/daily-agenda?days=${agendaDays}`).then(r => r.json())
+        fetch(`/api/schedule/daily-agenda?days=${agendaDays}`).then(r => r.json()),
+        fetch(`/api/schedule/planning-matrix?days=${agendaDays}`).then(r => r.json())
       ]);
 
       setDashboard(dashRes);
@@ -45,6 +47,7 @@ function App() {
       setQualityScore(scoreRes);
       setChangeoverMatrix(coRes);
       setDailyAgenda(agendaRes);
+      setPlanningMatrix(matrixRes);
     } catch (err) {
       console.error("Failed to load factory data", err);
     } finally {
@@ -79,7 +82,7 @@ function App() {
 
   if (loading && !dashboard) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#070c18] text-white">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#F8FAFC] text-slate-900">
         <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
         <h2 className="text-xl font-bold tracking-wide">Initializing Intelligent TOC Production Scheduler...</h2>
         <p className="text-slate-400 text-sm mt-1">Analyzing machines, dyes, order readiness, and Drum bottlenecks</p>
@@ -89,11 +92,11 @@ function App() {
 
   if (!loading && !dashboard) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#070c18] text-white p-6 text-center">
-        <div className="p-6 bg-rose-950/40 border border-rose-500/40 rounded-2xl max-w-md space-y-3">
-          <i data-lucide="alert-triangle" className="w-10 h-10 text-rose-400 mx-auto"></i>
-          <h2 className="text-lg font-bold text-white">Failed to Connect to Factory API</h2>
-          <p className="text-xs text-slate-300">Could not retrieve factory production data. Please ensure the backend server is running.</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#F8FAFC] text-slate-900 p-6 text-center">
+        <div className="p-6 bg-rose-50 border border-rose-200 border border-rose-500/40 rounded-2xl max-w-md space-y-3">
+          <i data-lucide="alert-triangle" className="w-10 h-10 text-rose-600 mx-auto"></i>
+          <h2 className="text-lg font-bold text-slate-900">Failed to Connect to Factory API</h2>
+          <p className="text-xs text-slate-600">Could not retrieve factory production data. Please ensure the backend server is running.</p>
           <button onClick={fetchData} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold transition-all shadow">
             Retry Connection
           </button>
@@ -115,15 +118,15 @@ function App() {
       )}
 
       {/* Top Industrial Header */}
-      <header className="bg-[#0b1329] border-b border-factory-border/60 sticky top-0 z-30 px-6 py-3.5 flex items-center justify-between shadow-xl">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-6 py-3.5 flex items-center justify-between shadow-xl">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-900/30">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-cyan-900/30">
             <i data-lucide="layers" className="w-6 h-6 text-white"></i>
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="font-bold text-lg text-white tracking-wide">PRIME TEXTILES</h1>
-              <span className="text-[11px] font-semibold uppercase px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+              <h1 className="font-bold text-lg text-slate-900 tracking-wide">PRIME TEXTILES</h1>
+              <span className="text-[11px] font-semibold uppercase px-2 py-0.5 rounded-full bg-cyan-500/10 text-blue-600 border border-cyan-500/30">
                 TOC DBR v2.0
               </span>
             </div>
@@ -133,22 +136,12 @@ function App() {
 
         {/* Active Drum Bottleneck Badge */}
         {dashboard && dashboard.bottleneck_info && (
-          <div className="hidden lg:flex items-center gap-3 bg-amber-950/40 border border-amber-500/40 rounded-xl px-4 py-1.5">
+          <div className="hidden lg:flex items-center gap-3 bg-amber-50 border border-amber-200 border border-amber-500/40 rounded-xl px-4 py-1.5">
             <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></div>
             <div>
-              <div className="text-[10px] uppercase font-bold text-amber-300/80 tracking-wider">Active TOC Drum</div>
+              <div className="text-[10px] uppercase font-bold text-amber-800/80 tracking-wider">Active TOC Drum</div>
               <div className="text-xs font-bold text-amber-200">{dashboard.bottleneck_info.resource_name} ({dashboard.bottleneck_info.utilization_pct}%)</div>
             </div>
-          </div>
-        )}
-
-        {/* 7-Day Advance Planning Warning Badge */}
-        {dashboard && dashboard.seven_day_rule_violations_count > 0 && (
-          <div className="hidden md:flex items-center gap-2 bg-rose-950/40 border border-rose-500/40 rounded-xl px-3.5 py-1.5">
-            <i data-lucide="alert-octagon" className="w-4 h-4 text-rose-400"></i>
-            <span className="text-xs font-bold text-rose-300">
-              {dashboard.seven_day_rule_violations_count} Orders Violating 7-Day Rule
-            </span>
           </div>
         )}
 
@@ -157,7 +150,7 @@ function App() {
           <button
             onClick={handleOptimize}
             disabled={optimizing}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-xs transition-all shadow-md shadow-cyan-900/30 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-all shadow-md shadow-cyan-900/30 disabled:opacity-50"
           >
             <i data-lucide={optimizing ? "refresh-cw" : "zap"} className={`w-4 h-4 ${optimizing ? 'animate-spin' : ''}`}></i>
             <span>{optimizing ? "Optimizing..." : "Re-Optimize Schedule"}</span>
@@ -165,36 +158,32 @@ function App() {
 
           <a
             href="/api/reports/excel"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-all"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs text-xs font-medium transition-all"
             download
           >
-            <i data-lucide="file-spreadsheet" className="w-4 h-4 text-emerald-400"></i>
+            <i data-lucide="file-spreadsheet" className="w-4 h-4 text-emerald-600"></i>
             <span className="hidden sm:inline">Excel</span>
           </a>
 
           <a
             href="/api/reports/pdf"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-all"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs text-xs font-medium transition-all"
             download
           >
-            <i data-lucide="file-text" className="w-4 h-4 text-rose-400"></i>
+            <i data-lucide="file-text" className="w-4 h-4 text-rose-600"></i>
             <span className="hidden sm:inline">PDF</span>
           </a>
         </div>
       </header>
 
       {/* Main Navigation Tabs */}
-      <nav className="bg-[#0b1329]/80 border-b border-factory-border/40 px-6 flex space-x-1 overflow-x-auto">
+      <nav className="bg-white/80 border-b border-slate-200 px-6 flex space-x-1 overflow-x-auto">
         {[
           { id: 'dashboard', label: 'TOC Command Center', icon: 'activity' },
           { id: 'agenda', label: 'Daily Production Agenda', icon: 'clipboard-list' },
-          { id: 'gantt', label: 'Production Gantt Chart', icon: 'calendar' },
-          { id: 'orders', label: 'Order Readiness & Urgency', icon: 'shopping-bag' },
           { id: 'machines', label: 'Machines & Changeover Matrix', icon: 'cpu' },
-          { id: 'inventory', label: 'Dyes & Material MRP', icon: 'flask-conical' },
           { id: 'disruptions', label: 'Disruption Event Simulator', icon: 'alert-triangle' },
-          { id: 'whatif', label: 'What-If Scenario Sandbox', icon: 'git-branch' },
-          { id: 'scorecard', label: 'Schedule Quality Score', icon: 'award' }
+          { id: 'whatif', label: 'What-If Scenario Sandbox', icon: 'git-branch' }
         ].map(tab => (
           <button
             key={tab.id}
@@ -204,8 +193,8 @@ function App() {
             }}
             className={`flex items-center gap-2 px-4 py-3 border-b-2 text-xs font-semibold whitespace-nowrap transition-all ${
               activeTab === tab.id
-                ? 'border-cyan-500 text-cyan-400 bg-cyan-950/20'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
+                ? 'border-blue-600 text-blue-600 bg-blue-50/70 font-semibold'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
             }`}
           >
             <i data-lucide={tab.icon} className="w-4 h-4"></i>
@@ -227,7 +216,9 @@ function App() {
         {activeTab === 'agenda' && (
           <AgendaView
             agenda={dailyAgenda}
+            planningMatrix={planningMatrix}
             agendaDays={agendaDays}
+            machines={machines}
             onChangeAgendaDays={(d) => setAgendaDays(d)}
             onSelectOrder={(ord) => setSelectedOrder(ord)}
             onSelectSlot={(slot) => setSelectedSlot(slot)}
@@ -236,26 +227,7 @@ function App() {
           />
         )}
 
-        {activeTab === 'gantt' && (
-          <GanttView
-            schedules={schedules}
-            machines={machines}
-            selectedTier={selectedTier}
-            onChangeTier={(t) => setSelectedTier(t)}
-            onSelectSlot={(slot) => setSelectedSlot(slot)}
-            onRefresh={fetchData}
-            showToast={showToast}
-          />
-        )}
 
-        {activeTab === 'orders' && (
-          <OrdersView
-            orders={orders}
-            onOrderCreated={fetchData}
-            onSelectOrder={(ord) => setSelectedOrder(ord)}
-            showToast={showToast}
-          />
-        )}
 
         {activeTab === 'machines' && (
           <MachinesView
@@ -263,13 +235,6 @@ function App() {
             changeoverMatrix={changeoverMatrix}
             onRefresh={fetchData}
             showToast={showToast}
-          />
-        )}
-
-        {activeTab === 'inventory' && (
-          <InventoryView
-            materials={materials}
-            forecasts={forecasts}
           />
         )}
 
@@ -290,12 +255,7 @@ function App() {
           />
         )}
 
-        {activeTab === 'scorecard' && (
-          <ScorecardView
-            qualityScore={qualityScore}
-            dashboard={dashboard}
-          />
-        )}
+
       </main>
 
       {/* Explainable Decision Drawer Modal */}
@@ -327,7 +287,7 @@ function App() {
           onOrderUpdated={fetchData}
           onNavigateToGantt={(orderId) => {
             setSelectedOrder(null);
-            setActiveTab('gantt');
+            setActiveTab('agenda');
           }}
           showToast={showToast}
           machines={machines}
@@ -347,14 +307,14 @@ function DashboardView({ dashboard, onSelectOrder, onNavigateTab }) {
       {/* Top 6 KPI Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
-          { label: 'On-Time Delivery', value: `${dashboard.on_time_delivery_pct}%`, icon: 'clock', color: dashboard.on_time_delivery_pct >= 95 ? 'text-emerald-400' : 'text-rose-400', sub: `${dashboard.late_orders} Late Orders` },
-          { label: 'Bottleneck Utilization', value: `${dashboard.bottleneck_utilization_pct}%`, icon: 'gauge', color: 'text-amber-400', sub: btn ? btn.resource_code : 'Active' },
-          { label: 'Machine Utilization', value: `${dashboard.machine_utilization_pct}%`, icon: 'cpu', color: 'text-cyan-400', sub: 'Fleet Average' },
+          { label: 'On-Time Delivery', value: `${dashboard.on_time_delivery_pct}%`, icon: 'clock', color: dashboard.on_time_delivery_pct >= 95 ? 'text-emerald-600' : 'text-rose-600', sub: `${dashboard.late_orders} Late Orders` },
+          { label: 'Bottleneck Utilization', value: `${dashboard.bottleneck_utilization_pct}%`, icon: 'gauge', color: 'text-amber-700', sub: btn ? btn.resource_code : 'Active' },
+          { label: 'Machine Utilization', value: `${dashboard.machine_utilization_pct}%`, icon: 'cpu', color: 'text-blue-600', sub: 'Fleet Average' },
           { label: 'Total Production', value: `${(dashboard.total_production_kg / 1000).toFixed(1)}k kg`, icon: 'package', color: 'text-blue-400', sub: `${dashboard.total_orders} Orders Planned` },
           { label: 'Schedule Stability', value: `${dashboard.schedule_stability_score}%`, icon: 'shield-check', color: 'text-indigo-400', sub: 'Low Nervousness' },
-          { label: 'Total Operating Cost', value: `₹${(dashboard.total_operating_cost_inr / 1000).toFixed(0)}k`, icon: 'dollar-sign', color: 'text-emerald-400', sub: 'Power, Steam & Water' }
+          { label: 'Total Operating Cost', value: `₹${(dashboard.total_operating_cost_inr / 1000).toFixed(0)}k`, icon: 'dollar-sign', color: 'text-emerald-600', sub: 'Power, Steam & Water' }
         ].map((kpi, i) => (
-          <div key={i} className="glass-card p-4 flex flex-col justify-between border border-factory-border/40 hover:border-cyan-500/30 transition-all">
+          <div key={i} className="glass-card p-4 flex flex-col justify-between border border-slate-200 hover:border-cyan-500/30 transition-all">
             <div className="flex items-center justify-between text-slate-400 mb-2">
               <span className="text-[11px] font-semibold uppercase">{kpi.label}</span>
               <i data-lucide={kpi.icon} className="w-4 h-4 text-slate-500"></i>
@@ -370,30 +330,30 @@ function DashboardView({ dashboard, onSelectOrder, onNavigateTab }) {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 uppercase">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-700 border border-amber-500/40 uppercase">
                 THEORY OF CONSTRAINTS — ACTIVE DRUM
               </span>
               <span className="text-xs text-slate-400">Step 1 & 2: Identify & Exploit</span>
             </div>
-            <h2 className="text-2xl font-black text-white tracking-wide">{btn.resource_name}</h2>
-            <p className="text-sm text-slate-300 leading-relaxed">{btn.recommendation}</p>
+            <h2 className="text-2xl font-black text-slate-900 tracking-wide">{btn.resource_name}</h2>
+            <p className="text-sm text-slate-600 leading-relaxed">{btn.recommendation}</p>
           </div>
 
-          <div className="flex items-center gap-6 bg-[#070c18]/80 p-4 rounded-xl border border-factory-border">
+          <div className="flex items-center gap-6 bg-[#F8FAFC]/80 p-4 rounded-xl border border-slate-200">
             <div className="text-center">
               <div className="text-xs text-slate-400">Current Load</div>
-              <div className="text-xl font-bold text-white mt-0.5">{btn.workload_kg.toLocaleString()} kg</div>
+              <div className="text-xl font-bold text-slate-900 mt-0.5">{btn.workload_kg.toLocaleString()} kg</div>
             </div>
-            <div className="h-8 w-px bg-slate-700"></div>
+            <div className="h-8 w-px bg-slate-200"></div>
             <div className="text-center">
               <div className="text-xs text-slate-400">Overload Hours</div>
-              <div className="text-xl font-bold text-amber-400 mt-0.5">+{btn.overload_hours}h</div>
+              <div className="text-xl font-bold text-amber-700 mt-0.5">+{btn.overload_hours}h</div>
             </div>
-            <div className="h-8 w-px bg-slate-700"></div>
+            <div className="h-8 w-px bg-slate-200"></div>
             <div className="text-center">
               <div className="text-xs text-slate-400">Buffer Status</div>
               <span className={`inline-block mt-1 px-2.5 py-0.5 rounded text-xs font-bold ${
-                btn.buffer_status === 'CRITICAL' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                btn.buffer_status === 'CRITICAL' ? 'bg-rose-500/20 text-rose-600 border border-rose-500/30' : 'bg-amber-500/20 text-amber-700 border border-amber-500/30'
               }`}>
                 {btn.buffer_status} ({btn.buffer_penetration_pct}%)
               </span>
@@ -402,623 +362,56 @@ function DashboardView({ dashboard, onSelectOrder, onNavigateTab }) {
         </div>
 
         {/* 5 Focusing Steps Visual Stepper */}
-        <div className="mt-6 pt-6 border-t border-slate-800 grid grid-cols-1 md:grid-cols-5 gap-3">
+        <div className="mt-6 pt-6 border-t border-slate-200 grid grid-cols-1 md:grid-cols-5 gap-3">
           {[
-            { step: '1. IDENTIFY', title: 'Find Constraint', desc: btn.resource_name, color: 'text-amber-400', active: true },
-            { step: '2. EXPLOIT', title: 'Maximize Drum', desc: 'Zero idle time; sequence light-to-dark', color: 'text-cyan-400', active: true },
+            { step: '1. IDENTIFY', title: 'Find Constraint', desc: btn.resource_name, color: 'text-amber-700', active: true },
+            { step: '2. EXPLOIT', title: 'Maximize Drum', desc: 'Zero idle time; sequence light-to-dark', color: 'text-blue-600', active: true },
             { step: '3. SUBORDINATE', title: 'Tie the Rope', desc: 'Pre-treatment throttled to 1500kg WIP', color: 'text-blue-400', active: true },
             { step: '4. ELEVATE', title: 'Increase Capacity', desc: 'Authorize 4h overtime if load >95%', color: 'text-purple-400', active: false },
-            { step: '5. REPEAT', title: 'Dynamic Recalc', desc: 'Monitor next bottleneck emergence', color: 'text-emerald-400', active: true }
+            { step: '5. REPEAT', title: 'Dynamic Recalc', desc: 'Monitor next bottleneck emergence', color: 'text-emerald-600', active: true }
           ].map((s, i) => (
-            <div key={i} className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+            <div key={i} className="bg-slate-50 p-3 rounded-lg border border-slate-200">
               <div className={`text-[10px] font-bold uppercase ${s.color}`}>{s.step}</div>
-              <div className="text-xs font-bold text-slate-200 mt-0.5">{s.title}</div>
+              <div className="text-xs font-bold text-slate-700 mt-0.5">{s.title}</div>
               <div className="text-[11px] text-slate-400 mt-1 leading-snug">{s.desc}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Grid: 7-Day Rule Alerts + Factory Utility Constraints */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 7-Day Planning Rule Violation Diagnostic Card */}
-        <div className="glass-panel p-5 border border-factory-border/60">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <i data-lucide="shield-alert" className="w-5 h-5 text-rose-400"></i>
-              <h3 className="font-bold text-sm text-white">7-Day Advance Planning Rule Status</h3>
-            </div>
-            <span className="text-xs font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
-              Mandatory Buyer Rule
-            </span>
+      {/* Factory Utility Constraints */}
+      <div className="glass-panel p-5 border border-slate-200">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <i data-lucide="droplet" className="w-5 h-5 text-blue-600"></i>
+            <h3 className="font-bold text-sm text-slate-900">Factory Utility & Resource Constraints</h3>
           </div>
+          <span className="text-xs text-slate-400">Hourly Operating Caps</span>
+        </div>
 
-          <div className="space-y-3">
-            {dashboard.active_alerts.filter(a => a.type === 'SEVEN_DAY_RULE').length === 0 ? (
-              <div className="p-4 rounded-lg bg-emerald-950/20 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-3">
-                <i data-lucide="check-circle" className="w-5 h-5 text-emerald-400"></i>
-                <span>All pending production orders have confirmed schedules at least 7 days before customer due dates.</span>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { name: 'Water Treatment & Supply', current: 18.5, max: 25.0, unit: 'm³/hr', pct: 74, color: 'bg-cyan-500' },
+            { name: 'Steam Boiler Output', current: 3100, max: 4000, unit: 'kg/hr', pct: 77.5, color: 'bg-amber-500' },
+            { name: 'Substation Electricity', current: 480, max: 650, unit: 'kW', pct: 73.8, color: 'bg-blue-500' },
+            { name: 'Effluent ETP Discharge', current: 16.2, max: 22.0, unit: 'm³/hr', pct: 73.6, color: 'bg-emerald-500' },
+          ].map((u, i) => (
+            <div key={i} className="p-3 bg-white/60 rounded-lg border border-slate-200">
+              <div className="flex justify-between items-center text-xs text-slate-400 mb-1">
+                <span>{u.name}</span>
+                <span className="font-bold text-slate-900">{u.current} / {u.max} {u.unit}</span>
               </div>
-            ) : (
-              dashboard.active_alerts.filter(a => a.type === 'SEVEN_DAY_RULE').slice(0, 3).map((alt, i) => (
-                <div key={i} className="p-3 rounded-lg bg-rose-950/30 border border-rose-500/30 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-rose-300">{alt.title}</span>
-                    <span className="text-[10px] text-rose-400 uppercase font-semibold">Critical Violation</span>
-                  </div>
-                  <p className="text-xs text-slate-300">{alt.message}</p>
-                  <div className="text-[11px] text-amber-300 flex items-center gap-1.5 pt-1">
-                    <i data-lucide="arrow-right" className="w-3.5 h-3.5"></i>
-                    <span><strong>Action:</strong> {alt.action}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Factory Utility Hourly Consumption Gauges */}
-        <div className="glass-panel p-5 border border-factory-border/60">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <i data-lucide="droplet" className="w-5 h-5 text-cyan-400"></i>
-              <h3 className="font-bold text-sm text-white">Factory Utility & Resource Constraints</h3>
-            </div>
-            <span className="text-xs text-slate-400">Hourly Operating Caps</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { name: 'Water Treatment & Supply', current: 18.5, max: 25.0, unit: 'm³/hr', pct: 74, color: 'bg-cyan-500' },
-              { name: 'Steam Boiler Output', current: 3100, max: 4000, unit: 'kg/hr', pct: 77.5, color: 'bg-amber-500' },
-              { name: 'Substation Electricity', current: 480, max: 650, unit: 'kW', pct: 73.8, color: 'bg-blue-500' },
-              { name: 'Effluent ETP Discharge', current: 16.2, max: 22.0, unit: 'm³/hr', pct: 73.6, color: 'bg-emerald-500' },
-            ].map((u, i) => (
-              <div key={i} className="p-3 bg-slate-900/60 rounded-lg border border-slate-800">
-                <div className="flex justify-between items-center text-xs text-slate-400 mb-1">
-                  <span>{u.name}</span>
-                  <span className="font-bold text-white">{u.current} / {u.max} {u.unit}</span>
-                </div>
-                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
-                  <div className={`h-full ${u.color} rounded-full`} style={{ width: `${u.pct}%` }}></div>
-                </div>
-                <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1.5">
-                  <span>Capacity load</span>
-                  <span className="font-semibold text-slate-300">{u.pct}%</span>
-                </div>
+              <div className="w-full h-2 bg-slate-50 rounded border border-slate-200-full overflow-hidden mt-2">
+                <div className={`h-full ${u.color} rounded-full`} style={{ width: `${u.pct}%` }}></div>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// 2. PRODUCTION GANTT CHART COMPONENT
-// 2. PRODUCTION GANTT CHART COMPONENT
-function GanttView({ schedules, machines, selectedTier, onChangeTier, onSelectSlot, onRefresh, showToast }) {
-  const [draggedSlot, setDraggedSlot] = useState(null);
-
-  useEffect(() => {
-    setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50);
-  }, [selectedTier, schedules]);
-
-  // Group schedules by machine
-  const machineSwimlanes = useMemo(() => {
-    const map = {};
-    machines.forEach(m => { map[m.id] = { machine: m, slots: [] }; });
-    schedules.forEach(s => {
-      if (map[s.machine_id]) {
-        map[s.machine_id].slots.push(s);
-      }
-    });
-    return Object.values(map);
-  }, [machines, schedules]);
-
-  const totalVisibleSlots = schedules.length;
-
-  return (
-    <div className="glass-panel p-5 border border-factory-border/60 space-y-4">
-      {/* Gantt Header & Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-lg font-bold text-white tracking-wide">Interactive Production Gantt Timeline</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-              {totalVisibleSlots} Jobs Scheduled
-            </span>
-          </div>
-          <p className="text-xs text-slate-400 mt-0.5">Drum-Buffer-Rope dispatch schedule with Freeze Window lock badges</p>
-        </div>
-
-        {/* 3-Level Hierarchy Switcher */}
-        <div className="flex items-center gap-2.5 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800">
-          <span className="text-xs text-slate-400 font-semibold px-2">Planning Level:</span>
-          <div className="flex gap-1">
-            {[
-              { id: 'DAILY', label: 'Daily Dispatch (48h)', icon: 'clock' },
-              { id: 'WEEKLY', label: 'Weekly Schedule (14d)', icon: 'calendar' },
-              { id: 'MONTHLY', label: 'Monthly Plan (30d)', icon: 'calendar-days' }
-            ].map(tier => (
-              <button
-                key={tier.id}
-                onClick={() => onChangeTier(tier.id)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                  selectedTier === tier.id
-                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-900/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <i data-lucide={tier.icon} className="w-3.5 h-3.5"></i>
-                <span>{tier.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Freeze Policy Legend */}
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-[#0b1329]/90 p-3 rounded-xl border border-slate-800">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="font-bold text-slate-300 flex items-center gap-1.5">
-            <i data-lucide="shield" className="w-3.5 h-3.5 text-cyan-400"></i>
-            <span>Freeze Policy:</span>
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-amber-950/50 text-amber-300 border border-amber-500/50 font-bold text-[11px] flex items-center gap-1.5 shadow-sm">
-            <i data-lucide="lock" className="w-3 h-3 text-amber-400"></i>
-            <span>Today (Locked)</span>
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-blue-950/50 text-blue-300 border border-blue-500/50 font-bold text-[11px] flex items-center gap-1.5 shadow-sm">
-            <i data-lucide="lock" className="w-3 h-3 text-blue-400"></i>
-            <span>Tomorrow (Mostly Locked)</span>
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-emerald-950/50 text-emerald-300 border border-emerald-500/40 font-bold text-[11px] flex items-center gap-1.5 shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>Flexible Horizon (&gt;1 week deadline — No Lock)</span>
-          </span>
-        </div>
-        <div className="text-[11px] text-slate-400 italic">
-          *Products with &gt;1 week deadline are kept flexible and do not show lock icons
-        </div>
-      </div>
-
-      {/* Swimlane Rows */}
-      <div className="space-y-4 pt-1 overflow-x-auto">
-        {machineSwimlanes.map(({ machine, slots }) => {
-          const isDrum = machine.code === 'JET-M2'; // High capacity bottleneck vessel
-          return (
-            <div
-              key={machine.id}
-              className={`p-3.5 rounded-xl border transition-all ${
-                isDrum
-                  ? 'bg-amber-950/15 border-amber-500/40 shadow-lg shadow-amber-950/20'
-                  : 'bg-slate-900/60 border-slate-800'
-              }`}
-            >
-              {/* Machine Header */}
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-2.5">
-                  <span className="font-bold text-xs text-white tracking-wide">{machine.name}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700/60">
-                    Max Batch: {machine.max_batch_kg}kg
-                  </span>
-                  {isDrum && (
-                    <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black bg-amber-500/20 text-amber-300 border border-amber-500/50 flex items-center gap-1 animate-pulse">
-                      <i data-lucide="gauge" className="w-3 h-3 text-amber-400"></i>
-                      <span>TOC DRUM (Bottleneck)</span>
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-slate-400">
-                  Total Workload: <strong className="text-white">{slots.reduce((sum, s) => sum + s.quantity_kg, 0)} kg</strong> ({slots.length} jobs)
-                </div>
+              <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1.5">
+                <span>Capacity load</span>
+                <span className="font-semibold text-slate-600">{u.pct}%</span>
               </div>
-
-              {/* Slot Blocks Bar */}
-              <div className="flex flex-wrap gap-3 min-h-[64px] p-2.5 bg-[#070c18] rounded-xl border border-slate-800/90 items-center">
-                {slots.length === 0 ? (
-                  <span className="text-xs text-slate-500 italic px-2">No jobs scheduled for this vessel in current planning window</span>
-                ) : (
-                  slots.map(s => {
-                    const start = new Date(s.planned_start);
-                    const end = new Date(s.planned_end);
-                    const now = new Date();
-                    const dueDate = s.due_date ? new Date(s.due_date) : null;
-                    const daysToDeadline = dueDate ? Math.round((dueDate - now) / (1000 * 60 * 60 * 24)) : 999;
-                    const isMoreThan1Week = daysToDeadline > 7;
-
-                    // Strictly enforce user's Freeze Policy rule:
-                    // "dont show lock for products that have more than 1 week deadline"
-                    const isTodayLocked = !isMoreThan1Week && (s.freeze_level === 'LOCKED' || (s.is_locked && daysToDeadline <= 2));
-                    const isTomorrowLocked = !isMoreThan1Week && (s.freeze_level === 'MOSTLY_LOCKED' || (s.is_locked && daysToDeadline <= 5 && !isTodayLocked));
-                    const isFlexible = isMoreThan1Week || (!isTodayLocked && !isTomorrowLocked);
-
-                    return (
-                      <div
-                        key={s.id}
-                        onClick={() => onSelectSlot(s)}
-                        className={`p-3 rounded-xl border cursor-pointer transition-all hover:scale-[1.02] flex flex-col gap-2 shadow-lg min-w-[240px] max-w-[300px] ${
-                          isTodayLocked
-                            ? 'bg-amber-950/30 border-amber-500/60 text-amber-100 hover:border-amber-400'
-                            : isTomorrowLocked
-                            ? 'bg-blue-950/30 border-blue-500/60 text-blue-100 hover:border-blue-400'
-                            : 'bg-slate-800/90 border-slate-700 hover:border-emerald-500 text-slate-200'
-                        }`}
-                        title="Click to view explainable scheduling rationales and override options"
-                      >
-                        {/* Top Card Row: Swatch + Order + Freeze Window Badge */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="w-3.5 h-3.5 rounded-full border border-white/40 shadow-sm shrink-0"
-                              style={{
-                                backgroundColor:
-                                  s.colour_code === 'WHITE' ? '#ffffff' :
-                                  s.colour_code === 'ROYAL_BLUE' ? '#2563eb' :
-                                  s.colour_code === 'DEEP_NAVY' ? '#1e3a8a' :
-                                  s.colour_code === 'JET_BLACK' ? '#0f172a' :
-                                  s.colour_code === 'SCARLET_RED' ? '#dc2626' :
-                                  s.colour_code === 'PASTEL_PINK' ? '#f472b6' :
-                                  s.colour_code === 'SKY_BLUE' ? '#38bdf8' :
-                                  s.colour_code === 'GOLDEN_YELLOW' ? '#eab308' : '#06b6d4'
-                              }}
-                            ></span>
-                            <span className="text-xs font-bold text-white">{s.order_number}</span>
-                          </div>
-
-                          {/* Lock Badge or Flexible Horizon */}
-                          {isTodayLocked ? (
-                            <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-1 shadow-sm">
-                              <i data-lucide="lock" className="w-2.5 h-2.5 text-amber-400"></i>
-                              <span>Today (Locked)</span>
-                            </span>
-                          ) : isTomorrowLocked ? (
-                            <span className="px-2 py-0.5 rounded text-[9px] font-black bg-blue-500/25 text-blue-300 border border-blue-500/50 flex items-center gap-1 shadow-sm">
-                              <i data-lucide="lock" className="w-2.5 h-2.5 text-blue-400"></i>
-                              <span>Tomorrow (Mostly Locked)</span>
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                              <span>Flexible Horizon</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Middle Row: Customer + Cloth */}
-                        <div className="text-[11px] text-slate-300 truncate">
-                          <strong className="text-white">{s.customer_name}</strong> • {s.quantity_kg}kg {s.cloth_type}
-                        </div>
-
-                        {/* Bottom Row: Start-End time & Deadline status */}
-                        <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-800/80 text-slate-400">
-                          <span>
-                            {start.toLocaleDateString([], { month: 'short', day: 'numeric' })} {start.getHours()}:00–{end.getHours()}:00
-                          </span>
-
-                          <div className="flex items-center gap-1.5">
-                            {isMoreThan1Week ? (
-                              <span className="text-emerald-400 font-semibold flex items-center gap-0.5">
-                                <i data-lucide="calendar" className="w-2.5 h-2.5"></i>
-                                <span>Due {daysToDeadline}d (&gt;1wk)</span>
-                              </span>
-                            ) : (
-                              <span className="text-amber-400 font-semibold flex items-center gap-0.5">
-                                <i data-lucide="clock" className="w-2.5 h-2.5"></i>
-                                <span>Due {daysToDeadline}d</span>
-                              </span>
-                            )}
-                            <i data-lucide="info" className="w-3 h-3 text-cyan-400 hover:text-white ml-0.5"></i>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// 3. EXPLAINABLE DECISION MODAL ("Why was this scheduled here?")
-function SlotDetailModal({ slot, machines, onClose, onOverrideSuccess, onViewOrder, showToast }) {
-  const [targetMachineId, setTargetMachineId] = useState(slot.machine_id);
-  const [overrideWarning, setOverrideWarning] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  // ESC key listener to close modal
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  useEffect(() => {
-    setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50);
-  }, []);
-
-  // Split reasons
-  const reasons = (slot.scheduling_reason || "Scheduled according to standard TOC Earliest Due Date priority.").split(" | ");
-
-  const handleReassign = async () => {
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/schedule/override', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          schedule_id: slot.id,
-          new_machine_id: parseInt(targetMachineId),
-          new_start_time: slot.planned_start,
-          force_override: true
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message);
-        onOverrideSuccess();
-      } else {
-        setOverrideWarning(data.warning || data.error);
-      }
-    } catch (e) {
-      showToast("Override failed: " + e.message, "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="glass-panel w-full max-w-2xl bg-[#0b1329] border border-cyan-500/50 shadow-2xl rounded-2xl relative space-y-5 p-6 overflow-hidden">
-        {/* Top Navigation Bar */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-cyan-500 text-xs font-semibold transition-all cursor-pointer"
-            title="Return to Gantt chart (ESC)"
-          >
-            <i data-lucide="arrow-left" className="w-4 h-4 text-cyan-400"></i>
-            <span>Back to Gantt</span>
-          </button>
-
-          {onViewOrder && (
-            <button
-              type="button"
-              onClick={() => onViewOrder(slot.order_id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 text-xs font-bold transition-all cursor-pointer"
-              title="Open full Order Details, recipe, and stage tracking for this job"
-            >
-              <i data-lucide="external-link" className="w-3.5 h-3.5"></i>
-              <span>View Complete Order Details</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
-            title="Close modal (ESC)"
-          >
-            <i data-lucide="x" className="w-4 h-4"></i>
-          </button>
-        </div>
-
-        {/* Modal Title */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
-            <i data-lucide="help-circle" className="w-5 h-5"></i>
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-white">Why was this order scheduled here?</h3>
-            <p className="text-xs text-slate-400">Explainable Decision Engine for {slot.order_number} ({slot.customer_name})</p>
-          </div>
-        </div>
-
-        {/* Decision Factors List */}
-        <div className="space-y-2.5 bg-slate-900/80 p-4 rounded-xl border border-slate-800">
-          <div className="text-xs font-bold uppercase text-cyan-400 tracking-wider mb-2">TOC Scheduling Rationales</div>
-          {reasons.map((r, i) => (
-            <div key={i} className="flex items-start gap-2.5 text-xs text-slate-200">
-              <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i>
-              <span>{r}</span>
             </div>
           ))}
         </div>
-
-        {/* Processing Metrics Breakdown */}
-        <div className="grid grid-cols-3 gap-3 text-center">
-          <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800">
-            <div className="text-[10px] text-slate-400 uppercase">Changeover Time</div>
-            <div className="text-sm font-bold text-white mt-0.5">{slot.changeover_min} min</div>
-          </div>
-          <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800">
-            <div className="text-[10px] text-slate-400 uppercase">Operating Cost</div>
-            <div className="text-sm font-bold text-emerald-400 mt-0.5">₹{slot.operating_cost_inr.toFixed(0)}</div>
-          </div>
-          <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800">
-            <div className="text-[10px] text-slate-400 uppercase">Buffer Penetration</div>
-            <div className={`text-sm font-bold mt-0.5 ${slot.buffer_penetration_pct > 66 ? 'text-rose-400' : 'text-emerald-400'}`}>
-              {slot.buffer_penetration_pct.toFixed(0)}%
-            </div>
-          </div>
-        </div>
-
-        {/* Manual Reassignment Section */}
-        <div className="pt-4 border-t border-slate-800 space-y-3">
-          <div className="text-xs font-bold text-slate-300">Manual Reassignment (Manager Override)</div>
-          
-          {overrideWarning && (
-            <div className="p-2.5 rounded bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs">
-              {overrideWarning}
-            </div>
-          )}
-
-          <div className="flex items-center gap-3">
-            <select
-              value={targetMachineId}
-              onChange={(e) => setTargetMachineId(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white flex-1"
-            >
-              {machines.map(m => (
-                <option key={m.id} value={m.id}>{m.name} (Max {m.max_batch_kg}kg)</option>
-              ))}
-            </select>
-
-            <button
-              onClick={handleReassign}
-              disabled={submitting}
-              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50"
-              title="Reassign this job to selected machine and validate TOC feasibility"
-            >
-              {submitting ? "Validating..." : "Reassign & Validate"}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
-  );
-}
-
-// 4. ORDER MANAGEMENT & READINESS RADAR COMPONENT
-function OrdersView({ orders, onOrderCreated, onSelectOrder, showToast }) {
-  const [filterPriority, setFilterPriority] = useState('ALL');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-
-  const filtered = useMemo(() => {
-    if (filterPriority === 'ALL') return orders;
-    return orders.filter(o => o.priority === filterPriority);
-  }, [orders, filterPriority]);
-
-  return (
-    <div className="glass-panel p-5 border border-factory-border/60 space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
-        <div>
-          <h2 className="text-lg font-bold text-white">Order Management & 5-Point Readiness Radar</h2>
-          <p className="text-xs text-slate-400">Tracks fabric, dye, operator, machine, and lab dip approval</p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
-            <span className="text-xs text-slate-400">Priority:</span>
-            {['ALL', 'EMERGENCY', 'HIGH', 'MEDIUM', 'LOW'].map(p => (
-              <button
-                key={p}
-                onClick={() => setFilterPriority(p)}
-                className={`px-2 py-0.5 text-xs font-semibold rounded ${
-                  filterPriority === p ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 text-white font-semibold text-xs rounded-lg flex items-center gap-2 shadow"
-          >
-            <i data-lucide="plus" className="w-4 h-4"></i>
-            <span>New Order</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Orders Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs text-slate-300">
-          <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
-            <tr>
-              <th className="py-3 px-4">Order #</th>
-              <th className="py-3 px-4">Customer</th>
-              <th className="py-3 px-4">Fabric</th>
-              <th className="py-3 px-4">Qty (kg)</th>
-              <th className="py-3 px-4">Colour</th>
-              <th className="py-3 px-4">Due Date</th>
-              <th className="py-3 px-4">Priority</th>
-              <th className="py-3 px-4">Urgency Score</th>
-              <th className="py-3 px-4">Readiness Status</th>
-              <th className="py-3 px-4">7-Day Rule</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60 font-medium">
-            {filtered.map(o => (
-              <tr key={o.id} onClick={() => onSelectOrder(o)} className="hover:bg-slate-800/40 cursor-pointer transition-all">
-                <td className="py-3 px-4 font-bold text-white">{o.order_number}</td>
-                <td className="py-3 px-4">{o.customer_name}</td>
-                <td className="py-3 px-4">{o.cloth_type}</td>
-                <td className="py-3 px-4 font-bold text-slate-100">{o.quantity_kg}</td>
-                <td className="py-3 px-4 flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full border border-white/30" style={{
-                    backgroundColor: o.colour_code === 'WHITE' ? '#ffffff' :
-                      o.colour_code === 'ROYAL_BLUE' ? '#2563eb' :
-                      o.colour_code === 'DEEP_NAVY' ? '#1e3a8a' :
-                      o.colour_code === 'JET_BLACK' ? '#0f172a' :
-                      o.colour_code === 'SCARLET_RED' ? '#dc2626' : '#eab308'
-                  }}></span>
-                  <span>{o.colour_name}</span>
-                </td>
-                <td className="py-3 px-4 text-slate-400">{new Date(o.due_date).toLocaleDateString()}</td>
-                <td className="py-3 px-4">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    o.priority === 'EMERGENCY' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
-                    o.priority === 'HIGH' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-300'
-                  }`}>
-                    {o.priority}
-                  </span>
-                </td>
-                <td className="py-3 px-4">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white">{o.urgency_score}</span>
-                    <div className="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-cyan-500" style={{ width: `${o.urgency_score}%` }}></div>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-3 px-4">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    o.readiness_status === 'READY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                    o.readiness_status === 'PARTIALLY_READY' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                    'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                  }`}>
-                    {o.readiness_status}
-                  </span>
-                </td>
-                <td className="py-3 px-4">
-                  {o.seven_day_rule_violated ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40">
-                      VIOLATED
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400">
-                      OK (≥7d)
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {showCreateModal && (
-        <CreateOrderModal
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={() => { setShowCreateModal(false); onOrderCreated(); showToast("Order Created & Feasibility Validated!"); }}
-        />
-      )}
     </div>
   );
 }
@@ -1200,24 +593,6 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
       setActionLoading(false);
     }
   };
-
-  // Calculate 7-Day rule status info
-  const dueDateObj = new Date(currentOrder.due_date);
-  const plannedStartObj = currentOrder.planned_start ? new Date(currentOrder.planned_start) : null;
-  const daysBeforeDue = plannedStartObj
-    ? Math.max(0, Math.round((dueDateObj - plannedStartObj) / (1000 * 60 * 60 * 24)))
-    : Math.max(0, Math.round((dueDateObj - new Date()) / (1000 * 60 * 60 * 24)));
-
-  let sevenDayStatusType = 'SAFE';
-  let sevenDayStatusText = `✓ Planned ${daysBeforeDue} days before due date (SAFE)`;
-  if (currentOrder.seven_day_rule_violated) {
-    sevenDayStatusType = 'CRITICAL';
-    sevenDayStatusText = `✕ 7-day planning rule violated (${daysBeforeDue} days lead time)`;
-  } else if (daysBeforeDue < 7) {
-    sevenDayStatusType = 'WARNING';
-    sevenDayStatusText = `⚠ Planned ${daysBeforeDue} days before due date (WARNING — Approaching 7-day rule limit)`;
-  }
-
   // Parse structured reasons
   const rawReasons = (currentOrder.scheduling_reason || "").split(" | ").filter(Boolean);
   const structuredReasons = rawReasons.length > 0 ? rawReasons : [
@@ -1236,35 +611,35 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
       aria-modal="true"
       aria-labelledby="order-details-title"
     >
-      <div className="glass-panel w-full max-w-2xl bg-[#0b1329] border border-cyan-500/50 shadow-2xl rounded-2xl flex flex-col max-h-[92vh] overflow-hidden text-slate-100">
+      <div className="glass-panel w-full max-w-2xl bg-white border border-cyan-500/50 shadow-2xl rounded-2xl flex flex-col max-h-[92vh] overflow-hidden text-slate-800">
         
         {/* ====================================================
             1. TOP NAVIGATION HEADER (Back Button + Title + Close Button)
            ==================================================== */}
-        <div className="px-5 py-3.5 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between shrink-0">
+        <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
           <button
             type="button"
             onClick={() => {
               if (subView !== 'overview') setSubView('overview');
               else onClose();
             }}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-cyan-500/60 text-xs font-semibold transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs hover:border-cyan-500/60 text-xs font-semibold transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer"
             title={subView !== 'overview' ? "Back to Order Details" : "Back to Orders list"}
             aria-label={subView !== 'overview' ? "Back to Order Details" : "Back to Orders list"}
           >
-            <i data-lucide="arrow-left" className="w-4 h-4 text-cyan-400"></i>
+            <i data-lucide="arrow-left" className="w-4 h-4 text-blue-600"></i>
             <span>{subView !== 'overview' ? "Back to Details" : "Back to Orders"}</span>
           </button>
 
           <div className="text-center">
             <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Production Order Control</span>
-            <div className="text-xs font-bold text-white">{currentOrder.order_number}</div>
+            <div className="text-xs font-bold text-slate-900">{currentOrder.order_number}</div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-rose-900/50 text-slate-400 hover:text-rose-200 border border-slate-700 hover:border-rose-500/50 flex items-center justify-center transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-rose-500"
+            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-rose-900/50 text-slate-400 hover:text-rose-200 border border-slate-300 hover:border-rose-500/50 flex items-center justify-center transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-rose-500"
             title="Close order details (ESC)"
             aria-label="Close order details"
           >
@@ -1280,17 +655,17 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
           {/* SUB-VIEW: EDIT ORDER */}
           {subView === 'edit' && (
             <form onSubmit={handleSaveEdit} className="space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                 <div className="flex items-center gap-2">
-                  <i data-lucide="edit-3" className="w-4 h-4 text-cyan-400"></i>
-                  <h3 className="text-sm font-bold text-white">Edit Order: {currentOrder.order_number}</h3>
+                  <i data-lucide="edit-3" className="w-4 h-4 text-blue-600"></i>
+                  <h3 className="text-sm font-bold text-slate-900">Edit Order: {currentOrder.order_number}</h3>
                 </div>
                 <span className="text-xs text-slate-400">Status: <strong>{currentOrder.status}</strong></span>
               </div>
 
               {isInProduction && (
-                <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-500/40 text-xs text-amber-200 flex items-start gap-2.5">
-                  <i data-lucide="lock" className="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 border border-amber-500/40 text-xs text-amber-200 flex items-start gap-2.5">
+                  <i data-lucide="lock" className="w-4 h-4 text-amber-700 shrink-0 mt-0.5"></i>
                   <div>
                     <strong>Locked Fields:</strong> Fabric, quantity, and dye shade cannot be modified because this batch is actively in production. You may only update priority and notes.
                   </div>
@@ -1299,84 +674,84 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Fabric Quantity (kg)</label>
+                  <label className="text-slate-700 block mb-1 font-medium">Fabric Quantity (kg)</label>
                   <input
                     type="number"
                     disabled={isInProduction}
                     value={editForm.quantity_kg}
                     onChange={e => setEditForm({ ...editForm, quantity_kg: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-cyan-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Customer Due Date</label>
+                  <label className="text-slate-700 block mb-1 font-medium">Customer Due Date</label>
                   <input
                     type="date"
                     disabled={isInProduction}
                     value={editForm.due_date}
                     onChange={e => setEditForm({ ...editForm, due_date: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-cyan-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Cloth / Fabric Type</label>
+                  <label className="text-slate-700 block mb-1 font-medium">Cloth / Fabric Type</label>
                   <input
                     type="text"
                     disabled={isInProduction}
                     value={editForm.cloth_type}
                     onChange={e => setEditForm({ ...editForm, cloth_type: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-cyan-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Colour Name</label>
+                  <label className="text-slate-700 block mb-1 font-medium">Colour Name</label>
                   <input
                     type="text"
                     disabled={isInProduction}
                     value={editForm.colour_name}
                     onChange={e => setEditForm({ ...editForm, colour_name: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-cyan-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Order Priority</label>
+                  <label className="text-slate-700 block mb-1 font-medium">Order Priority</label>
                   <select
                     value={editForm.priority}
                     onChange={e => setEditForm({ ...editForm, priority: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
                   >
-                    <option value="EMERGENCY">EMERGENCY (Top Priority)</option>
-                    <option value="HIGH">HIGH Priority</option>
-                    <option value="MEDIUM">MEDIUM Priority</option>
-                    <option value="LOW">LOW Priority</option>
+                    <option value="EMERGENCY" className="text-slate-900 bg-white">EMERGENCY (Top Priority)</option>
+                    <option value="HIGH" className="text-slate-900 bg-white">HIGH Priority</option>
+                    <option value="MEDIUM" className="text-slate-900 bg-white">MEDIUM Priority</option>
+                    <option value="LOW" className="text-slate-900 bg-white">LOW Priority</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Notes / Special Instructions</label>
+                  <label className="text-slate-700 block mb-1 font-medium">Notes / Special Instructions</label>
                   <input
                     type="text"
                     value={editForm.notes}
                     onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
                     placeholder="e.g. Export grade finish required"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setSubView('overview')}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all"
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-700 text-slate-600 text-xs font-semibold transition-all"
                 >
                   Cancel
                 </button>
@@ -1394,15 +769,15 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
           {/* SUB-VIEW: SCHEDULE VIEW */}
           {subView === 'schedule' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                 <div className="flex items-center gap-2">
-                  <i data-lucide="calendar" className="w-4 h-4 text-cyan-400"></i>
-                  <h3 className="text-sm font-bold text-white">Production Schedule: {currentOrder.order_number}</h3>
+                  <i data-lucide="calendar" className="w-4 h-4 text-blue-600"></i>
+                  <h3 className="text-sm font-bold text-slate-900">Production Schedule: {currentOrder.order_number}</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSubView('overview')}
-                  className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                 >
                   <i data-lucide="arrow-left" className="w-3.5 h-3.5"></i>
                   <span>Back to Details</span>
@@ -1412,50 +787,50 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
               {scheduleData ? (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                    <div className="p-3 bg-slate-100 rounded-lg border border-slate-200">
                       <div className="text-[10px] text-slate-400 uppercase">Assigned Machine</div>
-                      <div className="font-bold text-white mt-1">{scheduleData.machine_name || currentOrder.assigned_machine_name}</div>
+                      <div className="font-bold text-slate-900 mt-1">{scheduleData.machine_name || currentOrder.assigned_machine_name}</div>
                     </div>
-                    <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                    <div className="p-3 bg-slate-100 rounded-lg border border-slate-200">
                       <div className="text-[10px] text-slate-400 uppercase">Assigned Operator</div>
-                      <div className="font-bold text-white mt-1">{scheduleData.operator_name || currentOrder.assigned_operator_name || "Master Dyer"}</div>
+                      <div className="font-bold text-slate-900 mt-1">{scheduleData.operator_name || currentOrder.assigned_operator_name || "Master Dyer"}</div>
                     </div>
-                    <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                    <div className="p-3 bg-slate-100 rounded-lg border border-slate-200">
                       <div className="text-[10px] text-slate-400 uppercase">Planned Start</div>
-                      <div className="font-bold text-cyan-300 mt-1">
+                      <div className="font-bold text-blue-700 mt-1">
                         {scheduleData.planned_start ? new Date(scheduleData.planned_start).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "Unassigned"}
                       </div>
                     </div>
-                    <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                    <div className="p-3 bg-slate-100 rounded-lg border border-slate-200">
                       <div className="text-[10px] text-slate-400 uppercase">Planned End</div>
-                      <div className="font-bold text-cyan-300 mt-1">
+                      <div className="font-bold text-blue-700 mt-1">
                         {scheduleData.planned_end ? new Date(scheduleData.planned_end).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "Unassigned"}
                       </div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-3 text-center text-xs">
-                    <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                    <div className="p-3 bg-slate-100 rounded-lg border border-slate-200">
                       <div className="text-[10px] text-slate-400 uppercase">Base Processing</div>
-                      <div className="font-bold text-white mt-1">{(scheduleData.base_processing_min / 60).toFixed(1)} hours</div>
+                      <div className="font-bold text-slate-900 mt-1">{(scheduleData.base_processing_min / 60).toFixed(1)} hours</div>
                       <div className="text-[10px] text-slate-500">{scheduleData.base_processing_min} min</div>
                     </div>
-                    <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                    <div className="p-3 bg-slate-100 rounded-lg border border-slate-200">
                       <div className="text-[10px] text-slate-400 uppercase">Changeover Time</div>
-                      <div className="font-bold text-amber-400 mt-1">{scheduleData.changeover_min} min</div>
+                      <div className="font-bold text-amber-700 mt-1">{scheduleData.changeover_min} min</div>
                       <div className="text-[10px] text-slate-500">Includes cleaning</div>
                     </div>
-                    <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                    <div className="p-3 bg-slate-100 rounded-lg border border-slate-200">
                       <div className="text-[10px] text-slate-400 uppercase">Estimated Cost</div>
-                      <div className="font-bold text-emerald-400 mt-1">₹{scheduleData.operating_cost_inr.toFixed(0)}</div>
+                      <div className="font-bold text-emerald-600 mt-1">₹{scheduleData.operating_cost_inr.toFixed(0)}</div>
                       <div className="text-[10px] text-slate-500">Power & Water included</div>
                     </div>
                   </div>
 
-                  <div className="p-3 bg-slate-900 rounded-lg border border-slate-800 flex items-center justify-between text-xs">
+                  <div className="p-3 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
-                      <i data-lucide="shield-check" className="w-4 h-4 text-cyan-400"></i>
-                      <span>Freeze Window: <strong className="text-white">{currentOrder.freeze_level || "FLEXIBLE"}</strong></span>
+                      <i data-lucide="shield-check" className="w-4 h-4 text-blue-600"></i>
+                      <span>Freeze Window: <strong className="text-slate-900 font-bold">{currentOrder.freeze_level || "FLEXIBLE"}</strong></span>
                     </div>
                     {onNavigateToGantt && (
                       <button
@@ -1470,7 +845,7 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                   </div>
                 </div>
               ) : (
-                <div className="p-6 text-center text-xs text-slate-400 bg-slate-900/50 rounded-xl border border-slate-800">
+                <div className="p-6 text-center text-xs text-slate-400 bg-white/50 rounded-xl border border-slate-200">
                   <i data-lucide="clock" className="w-8 h-8 mx-auto text-slate-600 mb-2"></i>
                   <p>Order is currently in PENDING state and will be allocated a slot during the next optimization run.</p>
                 </div>
@@ -1481,15 +856,15 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
           {/* SUB-VIEW: PROCESS STAGES */}
           {subView === 'stages' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                 <div className="flex items-center gap-2">
-                  <i data-lucide="git-commit" className="w-4 h-4 text-cyan-400"></i>
-                  <h3 className="text-sm font-bold text-white">10-Stage Textile Pipeline Progress</h3>
+                  <i data-lucide="git-commit" className="w-4 h-4 text-blue-600"></i>
+                  <h3 className="text-sm font-bold text-slate-900">10-Stage Textile Pipeline Progress</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSubView('overview')}
-                  className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                 >
                   <i data-lucide="arrow-left" className="w-3.5 h-3.5"></i>
                   <span>Back to Details</span>
@@ -1508,19 +883,19 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                   { stage_name: "QUALITY_INSPECTION", sequence_order: 8, duration_minutes: 30, status: "PENDING", assigned_resource: "LAB_INSPECTION" },
                   { stage_name: "PACKING_DISPATCH", sequence_order: 9, duration_minutes: 40, status: "PENDING", assigned_resource: "DISPATCH_PACKING" }
                 ]).map((st, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 bg-slate-900 rounded-lg border border-slate-800 text-xs">
+                  <div key={i} className="flex items-center justify-between p-2.5 bg-slate-100 rounded-lg border border-slate-200 text-xs">
                     <div className="flex items-center gap-3">
-                      <span className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center font-bold text-[10px] text-slate-300">
+                      <span className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center font-bold text-[10px] text-slate-600">
                         {st.sequence_order || i + 1}
                       </span>
                       <div>
-                        <div className="font-bold text-white">{st.stage_name}</div>
+                        <div className="font-bold text-slate-900">{st.stage_name}</div>
                         <div className="text-[10px] text-slate-400">{st.assigned_resource} • {st.duration_minutes} min</div>
                       </div>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      st.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' :
-                      st.status === 'IN_PROGRESS' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 animate-pulse' :
+                      st.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-600' :
+                      st.status === 'IN_PROGRESS' ? 'bg-cyan-500/20 text-blue-700 border border-cyan-500/40 animate-pulse' :
                       'bg-slate-800 text-slate-400'
                     }`}>
                       {st.status}
@@ -1537,23 +912,23 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
               {/* ====================================================
                   2. ORDER HEADER & IDENTITY (Number, Customer, Due Date, Status)
                  ==================================================== */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-900/80 rounded-xl border border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white shadow-lg shrink-0">
+                  <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg shrink-0">
                     <i data-lucide="package" className="w-6 h-6"></i>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 id="order-details-title" className="text-xl font-black text-white tracking-tight">{currentOrder.order_number}</h2>
+                      <h2 id="order-details-title" className="text-xl font-black text-slate-900 tracking-tight">{currentOrder.order_number}</h2>
                       <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        currentOrder.priority === 'EMERGENCY' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' :
-                        currentOrder.priority === 'HIGH' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
-                        'bg-slate-800 text-slate-300'
+                        currentOrder.priority === 'EMERGENCY' ? 'bg-rose-500/20 text-rose-700 border border-rose-500/40' :
+                        currentOrder.priority === 'HIGH' ? 'bg-amber-500/20 text-amber-800 border border-amber-500/40' :
+                        'bg-slate-800 text-slate-600'
                       }`}>
                         {currentOrder.priority}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-300 font-medium">{currentOrder.customer_name} • {currentOrder.customer_priority_tier || "VIP Customer"}</p>
+                    <p className="text-xs text-slate-600 font-medium">{currentOrder.customer_name} • {currentOrder.customer_priority_tier || "VIP Customer"}</p>
                   </div>
                 </div>
 
@@ -1561,12 +936,12 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                 <div className="flex flex-col sm:items-end">
                   <div className="flex items-center gap-1.5">
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                      isInProduction ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 animate-pulse' :
-                      currentOrder.status === 'READY' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                      isInProduction ? 'bg-cyan-500/20 text-blue-700 border border-cyan-500/40 animate-pulse' :
+                      currentOrder.status === 'READY' ? 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40' :
                       currentOrder.status === 'SCHEDULED' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' :
                       currentOrder.status === 'COMPLETED' ? 'bg-emerald-600 text-white' :
-                      currentOrder.status === 'CANCELLED' ? 'bg-rose-950 text-rose-400 border border-rose-800' :
-                      'bg-slate-800 text-slate-300'
+                      currentOrder.status === 'CANCELLED' ? 'bg-rose-950 text-rose-600 border border-rose-800' :
+                      'bg-slate-800 text-slate-600'
                     }`}>
                       <i data-lucide={
                         isInProduction ? 'play-circle' :
@@ -1586,19 +961,19 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                  ==================================================== */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                 {/* Fabric & Volume */}
-                <div className="p-3.5 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+                <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-1">
                   <div className="text-[10px] text-slate-400 uppercase font-bold flex items-center gap-1.5">
-                    <i data-lucide="layers" className="w-3.5 h-3.5 text-cyan-400"></i>
+                    <i data-lucide="layers" className="w-3.5 h-3.5 text-blue-600"></i>
                     <span>Fabric & Volume</span>
                   </div>
-                  <div className="text-sm font-bold text-white">{currentOrder.quantity_kg} kg</div>
-                  <div className="text-slate-300 truncate">{currentOrder.cloth_type}</div>
+                  <div className="text-sm font-bold text-slate-900">{currentOrder.quantity_kg} kg</div>
+                  <div className="text-slate-600 truncate">{currentOrder.cloth_type}</div>
                 </div>
 
                 {/* Colour & Recipe */}
-                <div className="p-3.5 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+                <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-1">
                   <div className="text-[10px] text-slate-400 uppercase font-bold flex items-center gap-1.5">
-                    <i data-lucide="palette" className="w-3.5 h-3.5 text-amber-400"></i>
+                    <i data-lucide="palette" className="w-3.5 h-3.5 text-amber-700"></i>
                     <span>Colour & Recipe</span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
@@ -1611,18 +986,18 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                         currentOrder.colour_code === 'SCARLET_RED' ? '#dc2626' :
                         currentOrder.colour_code === 'GOLDEN_YELLOW' ? '#eab308' : '#06b6d4'
                     }}></span>
-                    <span className="text-sm font-bold text-white truncate">{currentOrder.colour_name}</span>
+                    <span className="text-sm font-bold text-slate-900 truncate">{currentOrder.colour_name}</span>
                   </div>
                   <div className="text-slate-400 text-[11px]">{currentOrder.colour_code}</div>
                 </div>
 
                 {/* Due Date & Planning Slack */}
-                <div className="p-3.5 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+                <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-1">
                   <div className="text-[10px] text-slate-400 uppercase font-bold flex items-center gap-1.5">
-                    <i data-lucide="calendar" className="w-3.5 h-3.5 text-emerald-400"></i>
+                    <i data-lucide="calendar" className="w-3.5 h-3.5 text-emerald-600"></i>
                     <span>Due Date</span>
                   </div>
-                  <div className="text-sm font-bold text-white">{new Date(currentOrder.due_date).toLocaleDateString()}</div>
+                  <div className="text-sm font-bold text-slate-900">{new Date(currentOrder.due_date).toLocaleDateString()}</div>
                   <div className="text-slate-400 text-[11px]">
                     {daysBeforeDue > 0 ? `Target in ${daysBeforeDue} days` : "Due today / overdue"}
                   </div>
@@ -1632,19 +1007,19 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
               {/* ====================================================
                   4. SCHEDULING RATIONALE (Structured Bullet Points)
                  ==================================================== */}
-              <div className="p-4 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2.5">
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase text-cyan-400 tracking-wider flex items-center gap-2">
+                  <h4 className="text-xs font-bold uppercase text-blue-600 tracking-wider flex items-center gap-2">
                     <i data-lucide="sparkles" className="w-4 h-4"></i>
                     <span>Scheduling Rationale</span>
                   </h4>
                   <span className="text-[11px] text-slate-400">AI Drum-Buffer-Rope Justification</span>
                 </div>
                 
-                <div className="space-y-1.5 text-xs text-slate-200">
+                <div className="space-y-1.5 text-xs text-slate-700">
                   {structuredReasons.map((reason, idx) => (
                     <div key={idx} className="flex items-start gap-2">
-                      <i data-lucide="check" className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5"></i>
+                      <i data-lucide="check" className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5"></i>
                       <span>{reason}</span>
                     </div>
                   ))}
@@ -1654,78 +1029,56 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
               {/* ====================================================
                   5. TOC / DBR STATUS (Bottleneck, Drum, Buffer, Rope, Utilization)
                  ==================================================== */}
-              <div className="p-4 bg-slate-900/90 rounded-xl border border-factory-border/60 space-y-3">
-                <div className="flex items-center justify-between pb-1 border-b border-slate-800">
-                  <h4 className="text-xs font-bold uppercase text-amber-400 tracking-wider flex items-center gap-2">
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                  <h4 className="text-xs font-bold uppercase text-amber-700 tracking-wider flex items-center gap-2">
                     <i data-lucide="activity" className="w-4 h-4"></i>
                     <span>TOC / DBR System Status</span>
                   </h4>
-                  <span className="text-[11px] font-bold text-slate-300">
-                    Drum: <strong className="text-amber-300">{currentOrder.assigned_machine_name || "M2 – Jet Dyeing"}</strong>
+                  <span className="text-[11px] font-bold text-slate-600">
+                    Drum: <strong className="text-amber-800">{currentOrder.assigned_machine_name || "M2 – Jet Dyeing"}</strong>
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center text-xs">
-                  <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
                     <div className="text-[10px] text-slate-400 uppercase">TOC Bottleneck</div>
-                    <div className="font-bold text-white mt-0.5 truncate">
+                    <div className="font-bold text-slate-900 mt-0.5 truncate">
                       {currentOrder.assigned_machine_name ? currentOrder.assigned_machine_name.split(' ')[0] + ' ' + (currentOrder.assigned_machine_name.split(' ')[1] || '') : "M2 Jet"}
                     </div>
                   </div>
 
-                  <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
                     <div className="text-[10px] text-slate-400 uppercase">Buffer Status</div>
                     <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold ${
-                      currentOrder.buffer_penetration_pct > 66 ? 'bg-rose-500/20 text-rose-300' :
-                      currentOrder.buffer_penetration_pct > 33 ? 'bg-amber-500/20 text-amber-300' :
-                      'bg-emerald-500/20 text-emerald-300'
+                      currentOrder.buffer_penetration_pct > 66 ? 'bg-rose-500/20 text-rose-700' :
+                      currentOrder.buffer_penetration_pct > 33 ? 'bg-amber-500/20 text-amber-800' :
+                      'bg-emerald-500/20 text-emerald-700'
                     }`}>
                       {currentOrder.buffer_penetration_pct > 66 ? 'CRITICAL' : (currentOrder.buffer_penetration_pct > 33 ? 'WARNING' : 'SAFE')}
                     </span>
                   </div>
 
-                  <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
                     <div className="text-[10px] text-slate-400 uppercase">Rope Status</div>
-                    <div className="font-bold text-emerald-400 mt-0.5">RELEASED</div>
+                    <div className="font-bold text-emerald-600 mt-0.5">RELEASED</div>
                   </div>
 
-                  <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
                     <div className="text-[10px] text-slate-400 uppercase">Drum Utilization</div>
-                    <div className="font-bold text-amber-300 mt-0.5">91.4%</div>
+                    <div className="font-bold text-amber-800 mt-0.5">91.4%</div>
                   </div>
-                </div>
-              </div>
-
-              {/* ====================================================
-                  6. 7-DAY ADVANCE PLANNING INDICATOR
-                 ==================================================== */}
-              <div className={`p-3.5 rounded-xl border flex items-start gap-3 text-xs ${
-                sevenDayStatusType === 'SAFE' ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200' :
-                sevenDayStatusType === 'WARNING' ? 'bg-amber-950/30 border-amber-500/30 text-amber-200' :
-                'bg-rose-950/40 border-rose-500/40 text-rose-200'
-              }`}>
-                <i data-lucide={
-                  sevenDayStatusType === 'SAFE' ? 'check-circle' :
-                  sevenDayStatusType === 'WARNING' ? 'alert-triangle' : 'alert-octagon'
-                } className="w-5 h-5 shrink-0 mt-0.5"></i>
-                <div className="space-y-1">
-                  <div className="font-bold">{sevenDayStatusText}</div>
-                  {currentOrder.seven_day_rule_violated && (
-                    <div className="text-[11px] text-rose-300">
-                      <strong>Reason:</strong> {currentOrder.seven_day_rule_diagnostic || "Capacity shortage on bottleneck machine."}
-                    </div>
-                  )}
                 </div>
               </div>
 
               {/* Blocking Reasons Alert if Start Production is disabled */}
               {!isStartable && blockingReasons.length > 0 && (
                 <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/30 text-xs text-amber-200 space-y-1.5">
-                  <div className="font-bold flex items-center gap-1.5 text-amber-300">
-                    <i data-lucide="alert-circle" className="w-4 h-4 text-amber-400"></i>
+                  <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                    <i data-lucide="alert-circle" className="w-4 h-4 text-amber-700"></i>
                     <span>Cannot Start Production (Prerequisites Missing):</span>
                   </div>
-                  <ul className="list-disc list-inside space-y-0.5 text-slate-300 text-[11px]">
+                  <ul className="list-disc list-inside space-y-0.5 text-slate-600 text-[11px]">
                     {blockingReasons.map((reason, i) => (
                       <li key={i}>{reason}</li>
                     ))}
@@ -1753,11 +1106,11 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                 <button
                   type="button"
                   onClick={() => setSubView('edit')}
-                  className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-500 font-bold text-xs flex items-center justify-center gap-1.5 transition-all focus:ring-2 focus:ring-slate-400 cursor-pointer"
+                  className="px-3 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs hover:border-slate-500 font-bold text-xs flex items-center justify-center gap-1.5 transition-all focus:ring-2 focus:ring-slate-400 cursor-pointer"
                   title="Allows the user to modify order information"
                   aria-label="Edit Order"
                 >
-                  <i data-lucide="edit-3" className="w-3.5 h-3.5 text-cyan-400"></i>
+                  <i data-lucide="edit-3" className="w-3.5 h-3.5 text-blue-600"></i>
                   <span>Edit Order</span>
                 </button>
 
@@ -1765,7 +1118,7 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                 <button
                   type="button"
                   onClick={() => setSubView('stages')}
-                  className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-500 font-bold text-xs flex items-center justify-center gap-1.5 transition-all focus:ring-2 focus:ring-slate-400 cursor-pointer"
+                  className="px-3 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs hover:border-slate-500 font-bold text-xs flex items-center justify-center gap-1.5 transition-all focus:ring-2 focus:ring-slate-400 cursor-pointer"
                   title="Shows complete order, material, colour, machine, and process information"
                   aria-label="View Details"
                 >
@@ -1781,7 +1134,7 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                   className={`px-3 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md ${
                     isStartable
                       ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white cursor-pointer hover:scale-[1.02] shadow-emerald-950/40 focus:ring-2 focus:ring-emerald-400'
-                      : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
+                      : 'bg-slate-800 text-slate-500 border border-slate-300/50 cursor-not-allowed opacity-60'
                   }`}
                   title={isStartable ? "Starts production after all requirements are satisfied" : `Disabled: ${blockingReasons.join("; ")}`}
                   aria-label="Start Production"
@@ -1798,7 +1151,7 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                   className={`px-3 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all col-span-2 sm:col-span-1 ${
                     isCancellable
                       ? 'bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-200 cursor-pointer hover:border-rose-600 focus:ring-2 focus:ring-rose-500'
-                      : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
+                      : 'bg-slate-800 text-slate-500 border border-slate-300/50 cursor-not-allowed opacity-60'
                   }`}
                   title={isCancellable ? "Cancels the order after confirmation" : cancelBlockedReason}
                   aria-label="Cancel Order"
@@ -1817,18 +1170,18 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
            ==================================================== */}
         {showStartConfirm && (
           <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="p-6 bg-slate-900 border border-emerald-500/50 rounded-2xl shadow-2xl max-w-md w-full space-y-4">
+            <div className="p-6 bg-white border border-emerald-500/50 rounded-2xl shadow-2xl max-w-md w-full space-y-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center">
                   <i data-lucide="play" className="w-5 h-5"></i>
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-white">Confirm Production Start</h4>
+                  <h4 className="font-bold text-sm text-slate-900">Confirm Production Start</h4>
                   <p className="text-xs text-slate-400">Order #{currentOrder.order_number}</p>
                 </div>
               </div>
 
-              <p className="text-xs text-slate-300 leading-relaxed">
+              <p className="text-xs text-slate-600 leading-relaxed">
                 All prerequisites have been verified. Are you ready to dispatch <strong>{currentOrder.quantity_kg} kg {currentOrder.cloth_type}</strong> to <strong>{currentOrder.assigned_machine_name || "the assigned dyeing vessel"}</strong>?
               </p>
 
@@ -1836,7 +1189,7 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                 <button
                   type="button"
                   onClick={() => setShowStartConfirm(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-700 text-slate-600 text-xs font-semibold"
                 >
                   Cancel
                 </button>
@@ -1858,18 +1211,18 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
            ==================================================== */}
         {showCancelConfirm && (
           <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="p-6 bg-slate-900 border border-rose-500/50 rounded-2xl shadow-2xl max-w-md w-full space-y-4">
+            <div className="p-6 bg-white border border-rose-500/50 rounded-2xl shadow-2xl max-w-md w-full space-y-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-600 flex items-center justify-center">
                   <i data-lucide="alert-triangle" className="w-5 h-5"></i>
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-white">Confirm Order Cancellation</h4>
+                  <h4 className="font-bold text-sm text-slate-900">Confirm Order Cancellation</h4>
                   <p className="text-xs text-slate-400">Order #{currentOrder.order_number}</p>
                 </div>
               </div>
 
-              <p className="text-xs text-slate-300 leading-relaxed">
+              <p className="text-xs text-slate-600 leading-relaxed">
                 Are you sure you want to cancel this order? This will release reserved machine capacity and materials for other production orders.
               </p>
 
@@ -1877,7 +1230,7 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
                 <button
                   type="button"
                   onClick={() => setShowCancelConfirm(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-700 text-slate-600 text-xs font-semibold"
                 >
                   Keep Order
                 </button>
@@ -1897,7 +1250,7 @@ function OrderDetailModal({ order, onClose, onOrderUpdated, onNavigateToGantt, s
         {/* ====================================================
             8. FOOTER HELPER TIP
            ==================================================== */}
-        <div className="px-5 py-2.5 bg-slate-950 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
+        <div className="px-5 py-2.5 bg-white border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
           <span className="flex items-center gap-1.5">
             <i data-lucide="info" className="w-3.5 h-3.5 text-slate-400"></i>
             <span>Tip: You can close this panel using the X button, the Back button, or by pressing ESC.</span>
@@ -1952,13 +1305,13 @@ function CreateOrderModal({ onClose, onSuccess }) {
       role="dialog"
       aria-modal="true"
     >
-      <form onSubmit={handleSubmit} className="glass-panel w-full max-w-md p-6 border border-cyan-500/40 shadow-2xl relative space-y-4 bg-[#0b1329] rounded-2xl">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-          <h3 className="text-base font-bold text-white">Create Customer Production Order</h3>
+      <form onSubmit={handleSubmit} className="glass-panel w-full max-w-md p-6 border border-cyan-500/40 shadow-2xl relative space-y-4 bg-white rounded-2xl">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+          <h3 className="text-base font-bold text-slate-900">Create Customer Production Order</h3>
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-700 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-all cursor-pointer"
             title="Close modal (ESC)"
           >
             <i data-lucide="x" className="w-4 h-4"></i>
@@ -1967,67 +1320,67 @@ function CreateOrderModal({ onClose, onSuccess }) {
 
         <div className="space-y-3 text-xs">
           <div>
-            <label className="text-slate-400 block mb-1">Order Number</label>
+            <label className="text-slate-700 block mb-1">Order Number</label>
             <input
               type="text"
               value={form.order_number}
               onChange={e => setForm({ ...form, order_number: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+              className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-slate-900"
               required
             />
           </div>
 
           <div>
-            <label className="text-slate-400 block mb-1">Customer Name</label>
+            <label className="text-slate-700 block mb-1">Customer Name</label>
             <input
               type="text"
               value={form.customer_name}
               onChange={e => setForm({ ...form, customer_name: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+              className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-slate-900"
               required
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-slate-400 block mb-1">Quantity (kg)</label>
+              <label className="text-slate-700 block mb-1">Quantity (kg)</label>
               <input
                 type="number"
                 value={form.quantity_kg}
                 onChange={e => setForm({ ...form, quantity_kg: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-slate-900"
                 required
               />
             </div>
             <div>
-              <label className="text-slate-400 block mb-1">Priority</label>
+              <label className="text-slate-700 block mb-1">Priority</label>
               <select
                 value={form.priority}
                 onChange={e => setForm({ ...form, priority: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-slate-900"
               >
-                <option value="EMERGENCY">EMERGENCY</option>
-                <option value="HIGH">HIGH</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="LOW">LOW</option>
+                <option value="EMERGENCY" className="text-slate-900 bg-white">EMERGENCY</option>
+                <option value="HIGH" className="text-slate-900 bg-white">HIGH</option>
+                <option value="MEDIUM" className="text-slate-900 bg-white">MEDIUM</option>
+                <option value="LOW" className="text-slate-900 bg-white">LOW</option>
               </select>
             </div>
           </div>
 
           <div>
-            <label className="text-slate-400 block mb-1">Due Date</label>
+            <label className="text-slate-700 block mb-1">Due Date</label>
             <input
               type="date"
               value={form.due_date}
               onChange={e => setForm({ ...form, due_date: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+              className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-slate-900"
               required
             />
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-300 text-xs">
+        <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-600 text-xs">
             Cancel
           </button>
           <button type="submit" className="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs">
@@ -2039,301 +1392,2603 @@ function CreateOrderModal({ onClose, onSuccess }) {
   );
 }
 
-// 4B. DAY-TO-DAY PRODUCTION AGENDA & SHIFT DISPATCH
-function AgendaView({ agenda, agendaDays, onChangeAgendaDays, onSelectOrder, onSelectSlot, onRefresh, showToast }) {
-  const [selectedDayIdx, setSelectedDayIdx] = useState(0);
+// =========================================================================
+// 4B. INDUSTRIAL DAY-TO-DAY PRODUCTION AGENDA & EDITABLE DISPATCH TABLE
+// =========================================================================
 
-  if (!agenda || !agenda.days || agenda.days.length === 0) {
-    return (
-      <div className="glass-panel p-8 text-center text-slate-400">
-        <i data-lucide="calendar" className="w-10 h-10 mx-auto text-cyan-500 mb-3 animate-pulse"></i>
-        <h3 className="text-sm font-bold text-white">Loading Day-to-Day Production Agenda...</h3>
-        <p className="text-xs text-slate-500 mt-1">Retrieving shift schedules, batch dispatches, and maintenance windows</p>
-      </div>
-    );
-  }
+const COLOUR_HEX_MAP = {
+  WHITE: '#ffffff',
+  SKY_BLUE: '#38bdf8',
+  GOLDEN_YELLOW: '#eab308',
+  ROYAL_BLUE: '#2563eb',
+  SCARLET_RED: '#dc2626',
+  DEEP_NAVY: '#1e3a8a',
+  JET_BLACK: '#0f172a',
+  PASTEL_PINK: '#f472b6'
+};
 
-  const days = agenda.days;
-  const currentDay = days[selectedDayIdx] || days[0];
+const COLOUR_OPTIONS = [
+  { code: 'WHITE', name: 'Optical Bleached White' },
+  { code: 'SKY_BLUE', name: 'Sky Blue Pastel' },
+  { code: 'GOLDEN_YELLOW', name: 'Golden Yellow' },
+  { code: 'ROYAL_BLUE', name: 'Vibrant Royal Blue' },
+  { code: 'SCARLET_RED', name: 'Scarlet Red' },
+  { code: 'DEEP_NAVY', name: 'Deep Navy Blue' },
+  { code: 'JET_BLACK', name: 'Jet Black Reactive' },
+  { code: 'PASTEL_PINK', name: 'Pastel Baby Pink' }
+];
+
+const OPERATOR_OPTIONS = [
+  { id: 1, name: 'Rajesh Kumar (Master Dyer)' },
+  { id: 2, name: 'Suresh Patel (Senior Operator)' },
+  { id: 3, name: 'Amit Sharma (Dyeing Tech)' },
+  { id: 4, name: 'Vikram Singh (Assistant Dyer)' }
+];
+
+// 1. Focused In-Table Edit Modal
+function EditScheduleModal({ task, machines, onClose, onSave, loading }) {
+  const initialDate = task.planned_start ? task.planned_start.split('T')[0] : new Date().toISOString().split('T')[0];
+  const initialStartTime = task.start_time_str || (task.planned_start ? task.planned_start.split('T')[1].substring(0, 5) : '08:00');
+  const initialEndTime = task.end_time_str || (task.planned_end ? task.planned_end.split('T')[1].substring(0, 5) : '12:30');
+
+  const [form, setForm] = useState({
+    slot_id: task.slot_id || task.id,
+    date: initialDate,
+    shift: task.shift || 'SHIFT_A',
+    start_time: initialStartTime,
+    end_time: initialEndTime,
+    machine_id: task.machine_id,
+    cloth_type: task.cloth_type || 'Cotton 100% Greige Knit',
+    quantity_kg: task.quantity_kg || 500,
+    colour_name: task.colour_name || 'Vibrant Royal Blue',
+    colour_code: task.colour_code || 'ROYAL_BLUE',
+    changeover_min: task.changeover_min || 0,
+    operator_id: task.operator_id || 1,
+    status: task.status || 'SCHEDULED'
+  });
+
+  const handleShiftChange = (shiftVal) => {
+    let sTime = form.start_time;
+    let eTime = form.end_time;
+    if (shiftVal === 'SHIFT_A') { sTime = '06:00'; eTime = '10:30'; }
+    else if (shiftVal === 'SHIFT_B') { sTime = '14:00'; eTime = '18:30'; }
+    else if (shiftVal === 'SHIFT_C') { sTime = '22:00'; eTime = '02:30'; }
+    setForm({ ...form, shift: shiftVal, start_time: sTime, end_time: eTime });
+  };
+
+  const handleColourChange = (cCode) => {
+    const found = COLOUR_OPTIONS.find(c => c.code === cCode);
+    setForm({
+      ...form,
+      colour_code: cCode,
+      colour_name: found ? found.name : cCode
+    });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const plannedStartIso = `${form.date}T${form.start_time}:00`;
+    const plannedEndIso = `${form.date}T${form.end_time}:00`;
+
+    onSave({
+      ...form,
+      planned_start: plannedStartIso,
+      planned_end: plannedEndIso,
+      quantity_kg: parseFloat(form.quantity_kg),
+      changeover_min: parseFloat(form.changeover_min),
+      machine_id: parseInt(form.machine_id),
+      operator_id: parseInt(form.operator_id)
+    });
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header & Horizon Switcher */}
-      <div className="glass-panel p-5 border border-factory-border/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+    >
+      <form onSubmit={handleSubmit} className="glass-panel w-full max-w-xl p-6 border border-cyan-500/50 shadow-2xl bg-white rounded-2xl space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
           <div className="flex items-center gap-2.5">
-            <h2 className="text-base font-bold text-white tracking-wide">Day-to-Day Production Agenda & Shift Schedule</h2>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-              Shop Floor Dispatch
-            </span>
+            <div className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-blue-600">
+              <i data-lucide="edit-3" className="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Edit Scheduled Job: {task.order_number}</h3>
+              <p className="text-[11px] text-slate-400">{task.customer_name} • Slot #{task.slot_id || task.id}</p>
+            </div>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Shift-by-shift detailed work orders: what machine runs what batch, colour sequence, changeover cleaning, and maintenance windows.
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-700 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-all cursor-pointer"
+          >
+            <i data-lucide="x" className="w-4 h-4"></i>
+          </button>
+        </div>
+
+        {/* Form Body */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+          {/* Date */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Production Date</label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={e => setForm({ ...form, date: e.target.value })}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+              required
+            />
+          </div>
+
+          {/* Shift */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Factory Shift</label>
+            <select
+              value={form.shift}
+              onChange={e => handleShiftChange(e.target.value)}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+            >
+              <option value="SHIFT_A" className="text-slate-900 bg-white">Shift A (Morning 06:00 - 14:00)</option>
+              <option value="SHIFT_B" className="text-slate-900 bg-white">Shift B (Afternoon 14:00 - 22:00)</option>
+              <option value="SHIFT_C" className="text-slate-900 bg-white">Shift C (Night 22:00 - 06:00)</option>
+            </select>
+          </div>
+
+          {/* Start Time */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Planned Start Time</label>
+            <input
+              type="time"
+              value={form.start_time}
+              onChange={e => setForm({ ...form, start_time: e.target.value })}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+              required
+            />
+          </div>
+
+          {/* End Time */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Planned End Time</label>
+            <input
+              type="time"
+              value={form.end_time}
+              onChange={e => setForm({ ...form, end_time: e.target.value })}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+              required
+            />
+          </div>
+
+          {/* Machine Selection */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Assigned Vessel / Machine</label>
+            <select
+              value={form.machine_id}
+              onChange={e => setForm({ ...form, machine_id: e.target.value })}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+            >
+              {(machines || []).map(m => (
+                <option key={m.id} value={m.id} className="text-slate-900 bg-white">
+                  {m.name} (Max {m.max_batch_kg}kg - {m.machine_type})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Quantity */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Fabric Quantity (kg)</label>
+            <input
+              type="number"
+              value={form.quantity_kg}
+              onChange={e => setForm({ ...form, quantity_kg: e.target.value })}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+              required
+              min="10"
+              max="2000"
+            />
+          </div>
+
+          {/* Colour Shade */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Dye Shade / Colour</label>
+            <div className="flex items-center gap-2">
+              <span
+                className="w-6 h-6 rounded-full border border-white/40 shrink-0 shadow"
+                style={{ backgroundColor: COLOUR_HEX_MAP[form.colour_code] || '#38bdf8' }}
+              ></span>
+              <select
+                value={form.colour_code}
+                onChange={e => handleColourChange(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+              >
+                {COLOUR_OPTIONS.map(c => (
+                  <option key={c.code} value={c.code} className="text-slate-900 bg-white">{c.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Setup / Changeover */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Setup / Changeover (min)</label>
+            <input
+              type="number"
+              value={form.changeover_min}
+              onChange={e => setForm({ ...form, changeover_min: e.target.value })}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+              min="0"
+              max="180"
+            />
+          </div>
+
+          {/* Operator */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Assigned Operator</label>
+            <select
+              value={form.operator_id}
+              onChange={e => setForm({ ...form, operator_id: e.target.value })}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+            >
+              {OPERATOR_OPTIONS.map(op => (
+                <option key={op.id} value={op.id} className="text-slate-900 bg-white">{op.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="text-slate-700 block mb-1 font-medium">Dispatch Status</label>
+            <select
+              value={form.status}
+              onChange={e => setForm({ ...form, status: e.target.value })}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-cyan-500"
+            >
+              <option value="SCHEDULED" className="text-slate-900 bg-white">SCHEDULED</option>
+              <option value="IN_PROGRESS" className="text-slate-900 bg-white">IN_PROGRESS</option>
+              <option value="COMPLETED" className="text-slate-900 bg-white">COMPLETED</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Dynamic Reorganization Notice */}
+        <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-[11px] text-cyan-200 flex items-start gap-2.5">
+          <i data-lucide="zap" className="w-4 h-4 text-blue-600 shrink-0 mt-0.5"></i>
+          <div>
+            <strong>Dynamic TOC Reorganization:</strong> Saving will automatically cascade downstream jobs on the machine, recalculate colour changeovers from the sequence matrix, and update Drum buffers.
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-700 text-slate-600 text-xs font-semibold transition-all cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-900/40 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+          >
+            <i data-lucide="refresh-cw" className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}></i>
+            <span>Save & Reorganize Schedule</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// 2. Multi-Step Reorganizing Progress Modal
+function ReorganizingProgressModal({ step, machineName }) {
+  const steps = [
+    { num: 1, title: 'Validating machine & operator constraints...', icon: 'shield-check' },
+    { num: 2, title: 'Recalculating colour changeovers & setups...', icon: 'sparkles' },
+    { num: 3, title: `Reorganizing downstream queue on ${machineName || 'vessel'}...`, icon: 'layers' },
+    { num: 4, title: 'Synchronizing Drum-Buffer-Rope buffers...', icon: 'activity' },
+    { num: 5, title: 'Schedule successfully re-optimized!', icon: 'check-circle-2' }
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel w-full max-w-md p-6 border border-cyan-500/50 shadow-2xl bg-white rounded-2xl space-y-4">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-200">
+          <div className="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-blue-600">
+            <i data-lucide="refresh-cw" className="w-5 h-5 animate-spin"></i>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Dynamic Schedule Reorganization</h3>
+            <p className="text-xs text-slate-400">TOC Drum-Buffer-Rope Real-Time Cascade</p>
+          </div>
+        </div>
+
+        <div className="space-y-2.5 py-2">
+          {steps.map(s => {
+            const isCompleted = step > s.num;
+            const isCurrent = step === s.num;
+            return (
+              <div
+                key={s.num}
+                className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all ${
+                  isCompleted ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-700' :
+                  isCurrent ? 'bg-blue-50 border border-blue-200 border-cyan-500 text-blue-700 shadow-md ring-1 ring-cyan-500/40' :
+                  'bg-white/40 border-slate-200 text-slate-500'
+                }`}
+              >
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  isCompleted ? 'bg-emerald-500 text-black' :
+                  isCurrent ? 'bg-cyan-500 text-black animate-pulse' :
+                  'bg-slate-800 text-slate-500'
+                }`}>
+                  {isCompleted ? '✓' : s.num}
+                </div>
+                <span className="text-xs font-medium flex-1">{s.title}</span>
+                {isCurrent && <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></div>}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="pt-2 text-[11px] text-center text-slate-500">
+          Cascading downstream jobs to eliminate overlaps & protect Drum buffer
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 3. Locked Job Conflict Resolution Modal
+function LockedConflictModal({ conflictData, onKeepLocked, onUnlockAndOptimize, onCancel }) {
+  if (!conflictData) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="glass-panel w-full max-w-lg p-6 border border-amber-500/60 shadow-2xl bg-white rounded-2xl space-y-4">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-200">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
+            <i data-lucide="lock" className="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Conflict with Locked Production Job</h3>
+            <p className="text-xs text-amber-800">Protected Freeze Window Constraint</p>
+          </div>
+        </div>
+
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 border border-amber-500/40 text-xs text-amber-200 leading-relaxed space-y-2">
+          <p>
+            The proposed schedule collides with <strong>{conflictData.locked_order}</strong> on <strong>{conflictData.machine_name}</strong>.
+          </p>
+          <div className="p-2 bg-slate-50 rounded border border-slate-200 font-mono text-[11px] text-amber-800">
+            Locked Slot: {new Date(conflictData.locked_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(conflictData.locked_end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (Protected)
+          </div>
+          <p className="text-[11px] text-slate-600">
+            Under TOC DBR rules, locked jobs represent committed shop floor dispatches and cannot be displaced automatically.
           </p>
         </div>
 
-        {/* 1-Week vs 1-Month Selector */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center p-1 bg-slate-900/90 rounded-xl border border-slate-700/80">
-            <button
-              onClick={() => onChangeAgendaDays(7)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                agendaDays === 7 ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <i data-lucide="calendar" className="w-3.5 h-3.5"></i>
-              <span>1 Week (7 Days)</span>
-            </button>
-            <button
-              onClick={() => onChangeAgendaDays(30)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                agendaDays === 30 ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <i data-lucide="calendar-range" className="w-3.5 h-3.5"></i>
-              <span>1 Month (30 Days)</span>
-            </button>
-          </div>
+        <div className="space-y-2 pt-2">
+          <button
+            type="button"
+            onClick={onUnlockAndOptimize}
+            className="w-full p-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow cursor-pointer"
+          >
+            <i data-lucide="unlock" className="w-4 h-4"></i>
+            <span>Unlock Conflicting Task and Re-Optimize Both</span>
+          </button>
 
           <button
-            onClick={() => window.print()}
-            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition-all flex items-center gap-1.5"
-            title="Print Daily Dispatch Sheet"
+            type="button"
+            onClick={onKeepLocked}
+            className="w-full p-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
-            <i data-lucide="printer" className="w-3.5 h-3.5 text-cyan-400"></i>
-            <span className="hidden sm:inline">Print Dispatch</span>
+            <i data-lucide="clock" className="w-4 h-4 text-blue-600"></i>
+            <span>Keep Locked Task & Choose Another Time/Machine</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onCancel}
+            className="w-full p-2 rounded-xl bg-transparent hover:bg-rose-50 border border-rose-200 text-slate-400 hover:text-rose-700 text-xs font-semibold transition-all text-center cursor-pointer"
+          >
+            Cancel Change
           </button>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Interactive Day Navigator Strip */}
-      <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
-        {days.map((d, idx) => {
-          const isSelected = idx === selectedDayIdx;
-          const hasMaint = d.maintenance_hours > 0;
-          return (
-            <button
-              key={d.date}
-              onClick={() => {
-                setSelectedDayIdx(idx);
-                setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50);
-              }}
-              className={`flex-shrink-0 p-3 rounded-xl border text-left transition-all min-w-[130px] ${
-                isSelected
-                  ? 'bg-cyan-950/40 border-cyan-500 shadow-lg shadow-cyan-950/50 ring-1 ring-cyan-500/50'
-                  : 'bg-[#0b1329]/80 border-factory-border/50 hover:border-slate-600 hover:bg-slate-800/40'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-1 mb-1">
-                <span className={`text-[10px] uppercase font-bold ${isSelected ? 'text-cyan-400' : 'text-slate-400'}`}>
-                  {d.rel_label}
-                </span>
-                {hasMaint && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title="Maintenance Scheduled"></span>
-                )}
+// 4. "Schedule Re-Optimized: What Changed" Diff Modal
+function ReorganizeDiffModal({ diff, onClose }) {
+  if (!diff) return null;
+  const shifted = diff.shifted_jobs || [];
+  const bufferAlerts = diff.buffer_alerts || [];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel w-full max-w-2xl max-h-[90vh] flex flex-col p-6 border border-cyan-500/50 shadow-2xl bg-white rounded-2xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-blue-600">
+              <i data-lucide="zap" className="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Schedule Re-Optimized: What Changed</h3>
+              <p className="text-xs text-slate-400">Dynamic ripple effects across shop floor</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-700 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-all cursor-pointer"
+          >
+            <i data-lucide="x" className="w-4 h-4"></i>
+          </button>
+        </div>
+
+        {/* Impact KPI Summary Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0 text-xs">
+          <div className="p-3 bg-white rounded-xl border border-slate-200">
+            <div className="text-[10px] text-slate-400 uppercase font-bold">Shifted Batches</div>
+            <div className="text-base font-black text-blue-600 mt-0.5">{shifted.length}</div>
+            <div className="text-[10px] text-slate-500">Downstream adjusted</div>
+          </div>
+          <div className="p-3 bg-white rounded-xl border border-slate-200">
+            <div className="text-[10px] text-slate-400 uppercase font-bold">Changeover Delta</div>
+            <div className={`text-base font-black mt-0.5 ${diff.changeover_delta_min > 0 ? 'text-amber-700' : 'text-emerald-600'}`}>
+              {diff.changeover_delta_min > 0 ? `+${diff.changeover_delta_min}` : diff.changeover_delta_min} min
+            </div>
+            <div className="text-[10px] text-slate-500">{diff.changeover_delta_min > 0 ? 'Washing washout' : 'Setup saved'}</div>
+          </div>
+          <div className="p-3 bg-white rounded-xl border border-slate-200">
+            <div className="text-[10px] text-slate-400 uppercase font-bold">Drum Bottleneck</div>
+            <div className="text-base font-black text-amber-800 mt-0.5">{diff.bottleneck_utilization_pct || 89.5}%</div>
+            <div className="text-[10px] text-slate-500 truncate">{diff.bottleneck_resource || 'Vessel M2'}</div>
+          </div>
+          <div className="p-3 bg-white rounded-xl border border-slate-200">
+            <div className="text-[10px] text-slate-400 uppercase font-bold">Buffer Alerts</div>
+            <div className={`text-base font-black mt-0.5 ${bufferAlerts.length > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+              {bufferAlerts.length}
+            </div>
+            <div className="text-[10px] text-slate-500">{bufferAlerts.length > 0 ? 'Penetration shift' : 'All safe'}</div>
+          </div>
+        </div>
+
+        {/* Shifted Batches Detail List */}
+        <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+          <div>
+            <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+              <i data-lucide="layers" className="w-3.5 h-3.5 text-blue-600"></i>
+              <span>Cascaded Downstream Jobs ({shifted.length})</span>
+            </h4>
+            {shifted.length === 0 ? (
+              <div className="p-3 rounded-lg bg-white/50 border border-slate-200 text-slate-500 italic text-center">
+                No downstream jobs required shifting; sufficient buffer gaps existed.
               </div>
-              <div className="text-xs font-bold text-white">{d.formatted_date.split(',')[0]}</div>
-              <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
-                <span>{d.jobs_count} jobs</span>
-                <strong className={isSelected ? 'text-cyan-300' : 'text-slate-300'}>{d.total_kg} kg</strong>
+            ) : (
+              <div className="space-y-1.5">
+                {shifted.map((sh, idx) => (
+                  <div key={idx} className="p-2.5 rounded-lg bg-white border border-slate-200 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 flex items-center gap-2">
+                        <span>{sh.order_number}</span>
+                        <span className="text-[10px] font-normal text-slate-400">• {sh.machine_name}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        {sh.old_start} → <strong className="text-blue-700">{sh.new_start}</strong>
+                      </div>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                      sh.delta_min > 0 ? 'bg-amber-500/20 text-amber-800 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40'
+                    }`}>
+                      {sh.delta_min > 0 ? `+${sh.delta_min}m delayed` : `${sh.delta_min}m advanced`}
+                    </span>
+                  </div>
+                ))}
               </div>
-            </button>
-          );
-        })}
+            )}
+          </div>
+
+          {/* Buffer Alerts List */}
+          {bufferAlerts.length > 0 && (
+            <div>
+              <h4 className="font-bold text-rose-700 mb-2 flex items-center gap-1.5">
+                <i data-lucide="alert-triangle" className="w-3.5 h-3.5 text-rose-600"></i>
+                <span>Buffer Status Changes</span>
+              </h4>
+              <div className="space-y-1.5">
+                {bufferAlerts.map((ba, idx) => (
+                  <div key={idx} className="p-2.5 rounded-lg bg-rose-950/30 border border-rose-500/40 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-bold text-slate-900">{ba.order_number}</span>
+                      <span className="text-slate-400 text-[11px] ml-2">Penetration: {ba.penetration_pct}%</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-700 border border-rose-500/40">
+                      {ba.old_status} → {ba.new_status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end pt-2 border-t border-slate-200 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow cursor-pointer"
+          >
+            Acknowledge & Close
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Selected Day KPI Summary Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-        <div className="glass-card p-3.5 border border-factory-border/50 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-cyan-950/60 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
-            <i data-lucide="package" className="w-5 h-5"></i>
+// =========================================================================
+// PRODUCTION PLANNING MATRIX MODALS & COMPONENT
+// =========================================================================
+
+// 1. Cell Action Modal (Move, Remove, Toggle Lock)
+function MatrixCellActionModal({ data, machines, onClose, onMove, onRemove, onToggleLock, onSelectOrder, loading }) {
+  if (!data) return null;
+  const { order, machine, cell } = data;
+  const [targetMachineId, setTargetMachineId] = React.useState(
+    machines.find(m => m.id !== machine.id)?.id || machine.id
+  );
+
+  const selectedTarget = machines.find(m => m.id === Number(targetMachineId));
+  const isOverCapacity = selectedTarget && (order.quantity_kg > selectedTarget.capacity_kg);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel w-full max-w-md p-6 border border-cyan-500/50 shadow-2xl bg-white rounded-2xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-blue-600">
+              <i data-lucide="cpu" className="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Machine Allocation</h3>
+              <p className="text-xs text-slate-400">{order.order_number} • {machine.code}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+            <i data-lucide="x" className="w-4 h-4"></i>
+          </button>
+        </div>
+
+        {/* Order Details Preview */}
+        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">Customer:</span>
+            <span className="font-bold text-slate-900">{order.customer_name}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">Fabric & Colour:</span>
+            <span className="font-medium text-slate-700">{order.cloth_type} • {order.colour_name}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">Quantity:</span>
+            <span className="font-bold text-blue-700">{order.quantity_kg?.toLocaleString()} kg</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">Planned Schedule:</span>
+            <span className="font-bold text-slate-900">{order.planned_day_label}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">Freeze Window:</span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+              cell.is_locked ? 'bg-amber-500/20 text-amber-800 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40'
+            }`}>
+              {cell.is_locked ? '🔒 LOCKED' : '🔓 FLEXIBLE'}
+            </span>
+          </div>
+        </div>
+
+        {/* Action 1: Move to another machine */}
+        <div className="p-3 bg-white/60 rounded-xl border border-slate-200 space-y-2.5">
+          <label className="block text-xs font-bold text-slate-600">
+            Move Order to Another Machine:
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={targetMachineId}
+              onChange={e => setTargetMachineId(Number(e.target.value))}
+              className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+            >
+              {machines.map(m => (
+                <option key={m.id} value={m.id} disabled={m.id === machine.id} className="text-slate-900 bg-white">
+                  {m.code} — {m.name} (Cap: {m.capacity_kg}kg, Load: {m.current_load_kg}kg) {m.id === machine.id ? '(Current)' : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => onMove(targetMachineId)}
+              disabled={loading || targetMachineId === machine.id}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow disabled:opacity-50 cursor-pointer"
+            >
+              Move
+            </button>
+          </div>
+          {isOverCapacity && (
+            <div className="p-2 rounded bg-amber-50 border border-amber-200 border border-amber-500/40 text-[11px] text-amber-800 flex items-center gap-1.5">
+              <i data-lucide="alert-triangle" className="w-3.5 h-3.5 shrink-0"></i>
+              <span>Capacity Notice: Order ({order.quantity_kg}kg) exceeds {selectedTarget?.code} limit ({selectedTarget?.capacity_kg}kg).</span>
+            </div>
+          )}
+        </div>
+
+        {/* Other Actions: Lock Toggle, Remove, Details */}
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={onToggleLock}
+            disabled={loading}
+            className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              cell.is_locked
+                ? 'bg-amber-500/20 border-amber-500/40 text-amber-800 hover:bg-amber-500/30'
+                : 'bg-slate-100 border-slate-300 text-slate-700 hover:text-slate-900 hover:bg-slate-200'
+            }`}
+          >
+            <i data-lucide={cell.is_locked ? "unlock" : "lock"} className="w-3.5 h-3.5"></i>
+            <span>{cell.is_locked ? "Unlock Order" : "Lock Order"}</span>
+          </button>
+
+          <button
+            onClick={onRemove}
+            disabled={loading}
+            className="p-2.5 rounded-xl bg-rose-950/30 hover:bg-rose-900/50 border border-rose-600/40 text-rose-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <i data-lucide="trash-2" className="w-3.5 h-3.5"></i>
+            <span>Unassign Vessel</span>
+          </button>
+        </div>
+
+        <button
+          onClick={() => { onClose(); onSelectOrder(order); }}
+          className="w-full py-2 bg-slate-100 hover:bg-slate-700 text-slate-600 rounded-xl text-xs font-medium border border-slate-300 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+        >
+          <i data-lucide="external-link" className="w-3.5 h-3.5 text-blue-600"></i>
+          <span>View Full Order Details & Process Stages</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 2. Assign Order Modal (Clicking unassigned cell)
+function MatrixAssignModal({ data, onClose, onAssign, loading }) {
+  if (!data) return null;
+  const { order, machine } = data;
+  const [plannedDay, setPlannedDay] = React.useState(order.planned_day || 1);
+  const isOverCapacity = order.quantity_kg > machine.capacity_kg;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel w-full max-w-md p-6 border border-cyan-500/50 shadow-2xl bg-white rounded-2xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-blue-600">
+              <i data-lucide="plus-circle" className="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Assign Order to Machine</h3>
+              <p className="text-xs text-slate-400">{order.order_number} → {machine.code}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+            <i data-lucide="x" className="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">Machine:</span>
+            <span className="font-bold text-slate-900">{machine.name} ({machine.code})</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">Machine Max Capacity:</span>
+            <span className="font-bold text-blue-700">{machine.capacity_kg} kg</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">Order Batch Weight:</span>
+            <span className="font-bold text-slate-900">{order.quantity_kg} kg</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">Fabric & Colour:</span>
+            <span className="font-medium text-slate-700">{order.cloth_type} • {order.colour_name}</span>
+          </div>
+        </div>
+
+        {isOverCapacity && (
+          <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 border border-amber-500/40 text-xs text-amber-800 flex items-center gap-2">
+            <i data-lucide="alert-triangle" className="w-4 h-4 shrink-0 text-amber-700"></i>
+            <div>
+              <strong>Capacity Warning:</strong> Order ({order.quantity_kg}kg) exceeds {machine.code} nominal capacity ({machine.capacity_kg}kg). Multi-batch splitting will be evaluated.
+            </div>
+          </div>
+        )}
+
+        {/* Planned Day Selection */}
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-slate-600">Target Planned Day:</label>
+          <select
+            value={plannedDay}
+            onChange={e => setPlannedDay(Number(e.target.value))}
+            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+          >
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 21, 30].map(d => (
+              <option key={d} value={d} className="text-slate-900 bg-white">
+                Day {d} {d === 1 ? '(Today)' : (d === 2 ? '(Tomorrow)' : '')}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-700 text-slate-600 text-xs font-bold transition-all border border-slate-300 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => onAssign(plannedDay)}
+            className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow cursor-pointer disabled:opacity-50"
+          >
+            {loading ? "Assigning..." : "Confirm & Re-Optimize"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 3. Edit Order Row Modal (Order #, Quantity, Planned Day, Fabric, Colour)
+function MatrixEditRowModal({ order, onClose, onSave, loading }) {
+  if (!order) return null;
+  const initialDueDate = order.due_date ? order.due_date.split('T')[0] : new Date(Date.now() + 6 * 86400000).toISOString().split('T')[0];
+  const [form, setForm] = React.useState({
+    order_number: order.order_number,
+    quantity_kg: order.quantity_kg,
+    due_date: initialDueDate,
+    due_day: order.due_day || 7,
+    planned_day: order.planned_day || 0,
+    cloth_type: order.cloth_type,
+    colour_name: order.colour_name,
+    colour_code: order.colour_code
+  });
+
+  const handleDueDateChange = (val) => {
+    if (!val) return;
+    const dDate = new Date(val + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.max(1, Math.round((dDate - today) / 86400000) + 1);
+    setForm(prev => ({ ...prev, due_date: val, due_day: diffDays }));
+  };
+
+  const handleDueDayChange = (dNum) => {
+    const num = Number(dNum);
+    const newD = new Date();
+    newD.setDate(newD.getDate() + (num - 1));
+    setForm(prev => ({ ...prev, due_day: num, due_date: newD.toISOString().split('T')[0] }));
+  };
+
+  const handleColourChange = (code) => {
+    const opt = COLOUR_OPTIONS.find(c => c.code === code);
+    setForm(prev => ({
+      ...prev,
+      colour_code: code,
+      colour_name: opt ? opt.name : prev.colour_name
+    }));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel w-full max-w-lg p-6 border border-cyan-500/50 shadow-2xl bg-white rounded-2xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+              <i data-lucide="edit-3" className="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Edit Order & Due Date</h3>
+              <p className="text-xs text-slate-400">Modify schedule matrix row parameters</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+            <i data-lucide="x" className="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            onSave(form);
+          }}
+          className="space-y-3 text-xs"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Order Number</label>
+              <input
+                type="text"
+                value={form.order_number}
+                onChange={e => setForm({ ...form, order_number: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono focus:ring-1 focus:ring-cyan-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Quantity (kg)</label>
+              <input
+                type="number"
+                step="10"
+                value={form.quantity_kg}
+                onChange={e => setForm({ ...form, quantity_kg: Number(e.target.value) })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-1 focus:ring-cyan-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Due Date (Deadline)</label>
+              <input
+                type="date"
+                value={form.due_date}
+                onChange={e => handleDueDateChange(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-1 focus:ring-cyan-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Due Day (Relative)</label>
+              <select
+                value={form.due_day}
+                onChange={e => handleDueDayChange(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer font-medium"
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 21, 30].map(d => (
+                  <option key={d} value={d} className="text-slate-900 bg-white">
+                    Day {d} {d === 1 ? '(Today)' : (d === 2 ? '(Tomorrow)' : '')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Planned Day</label>
+              <select
+                value={form.planned_day}
+                onChange={e => setForm({ ...form, planned_day: Number(e.target.value) })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer font-medium"
+              >
+                <option value={0} className="text-slate-900 bg-white">⚡ Auto-Calculate (By Capacity & Due Date)</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 21, 30].map(d => (
+                  <option key={d} value={d} className="text-slate-900 bg-white">
+                    Day {d} {d === 1 ? '(Today)' : (d === 2 ? '(Tomorrow)' : '')}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Fabric Type</label>
+              <input
+                type="text"
+                value={form.cloth_type}
+                onChange={e => setForm({ ...form, cloth_type: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 mb-1 font-medium">Target Colour</label>
+            <div className="flex gap-2">
+              <select
+                value={form.colour_code}
+                onChange={e => handleColourChange(e.target.value)}
+                className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+              >
+                {COLOUR_OPTIONS.map(c => (
+                  <option key={c.code} value={c.code} className="text-slate-900 bg-white">{c.name} ({c.code})</option>
+                ))}
+              </select>
+              <div
+                className="w-9 h-9 rounded-lg border border-slate-300 shrink-0 shadow"
+                style={{ backgroundColor: COLOUR_HEX_MAP[form.colour_code] || '#38bdf8' }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="p-3 bg-cyan-950/20 border border-cyan-500/30 rounded-xl text-[11px] text-blue-700">
+            <i data-lucide="info" className="w-3.5 h-3.5 inline mr-1"></i>
+            Saving will trigger automatic plant reorganization: re-evaluating vessel capacity, due-date urgency, sequencing colour changeovers, and updating Drum buffers.
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-700 text-slate-600 font-bold border border-slate-300 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow cursor-pointer disabled:opacity-50"
+            >
+              {loading ? "Re-Optimizing..." : "Save & Re-Optimize"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// 4. Add New Order Modal
+function MatrixAddOrderModal({ machines, onClose, onAdd, loading }) {
+  const defaultDueDate = new Date();
+  defaultDueDate.setDate(defaultDueDate.getDate() + 6);
+  const defaultDueDateStr = defaultDueDate.toISOString().split('T')[0];
+
+  const [form, setForm] = React.useState({
+    order_number: `ORD-${Math.floor(100 + Math.random() * 900)}`,
+    customer_name: 'Vardhman Textiles Ltd',
+    cloth_type: 'Single Jersey 100% Cotton',
+    colour_name: 'Vibrant Royal Blue',
+    colour_code: 'ROYAL_BLUE',
+    quantity_kg: 400,
+    due_date: defaultDueDateStr,
+    due_day: 7,
+    customer_tier: 'TIER_2',
+    planned_day: 0,
+    machine_id: null,
+    priority: 'MEDIUM'
+  });
+
+  const handleDueDateChange = (val) => {
+    if (!val) return;
+    const dDate = new Date(val + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.max(1, Math.round((dDate - today) / 86400000) + 1);
+    setForm(prev => ({ ...prev, due_date: val, due_day: diffDays }));
+  };
+
+  const handleDueDayChange = (dNum) => {
+    const num = Number(dNum);
+    const newD = new Date();
+    newD.setDate(newD.getDate() + (num - 1));
+    setForm(prev => ({ ...prev, due_day: num, due_date: newD.toISOString().split('T')[0] }));
+  };
+
+  const handleColourChange = (code) => {
+    const opt = COLOUR_OPTIONS.find(c => c.code === code);
+    setForm(prev => ({
+      ...prev,
+      colour_code: code,
+      colour_name: opt ? opt.name : prev.colour_name
+    }));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel w-full max-w-lg p-6 border border-cyan-500/50 shadow-2xl bg-white rounded-2xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+              <i data-lucide="plus" className="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Add Order to Planning Matrix</h3>
+              <p className="text-xs text-slate-400">Insert new batch directly into factory schedule</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+            <i data-lucide="x" className="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            onAdd(form);
+          }}
+          className="space-y-3 text-xs"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Order Number</label>
+              <input
+                type="text"
+                value={form.order_number}
+                onChange={e => setForm({ ...form, order_number: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono focus:ring-1 focus:ring-cyan-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Customer</label>
+              <input
+                type="text"
+                value={form.customer_name}
+                onChange={e => setForm({ ...form, customer_name: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Batch Weight (kg)</label>
+              <input
+                type="number"
+                step="10"
+                value={form.quantity_kg}
+                onChange={e => setForm({ ...form, quantity_kg: Number(e.target.value) })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-1 focus:ring-cyan-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Customer Priority / Tier</label>
+              <select
+                value={form.priority}
+                onChange={e => setForm({ ...form, priority: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer font-medium"
+              >
+                <option value="EMERGENCY" className="text-slate-900 bg-white">Tier 1 - VIP / Emergency (Top Urgency)</option>
+                <option value="HIGH" className="text-slate-900 bg-white">Tier 1 - Commercial High</option>
+                <option value="MEDIUM" className="text-slate-900 bg-white">Tier 2 - Commercial Standard</option>
+                <option value="LOW" className="text-slate-900 bg-white">Tier 3 - Utility / Flexible</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Customer Due Date (Deadline)</label>
+              <input
+                type="date"
+                value={form.due_date}
+                onChange={e => handleDueDateChange(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-1 focus:ring-cyan-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Due Day (Relative)</label>
+              <select
+                value={form.due_day}
+                onChange={e => handleDueDayChange(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer font-medium"
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 21, 30].map(d => (
+                  <option key={d} value={d} className="text-slate-900 bg-white">
+                    Day {d} {d === 1 ? '(Today)' : (d === 2 ? '(Tomorrow)' : '')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Planned Day</label>
+              <select
+                value={form.planned_day}
+                onChange={e => setForm({ ...form, planned_day: Number(e.target.value) })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer font-medium"
+              >
+                <option value={0} className="text-slate-900 bg-white">⚡ Auto-Calculate (By Capacity & Due Date)</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 21, 30].map(d => (
+                  <option key={d} value={d} className="text-slate-900 bg-white">
+                    Day {d} {d === 1 ? '(Today)' : (d === 2 ? '(Tomorrow)' : '')}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Fabric Type</label>
+              <input
+                type="text"
+                value={form.cloth_type}
+                onChange={e => setForm({ ...form, cloth_type: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Colour</label>
+              <div className="flex gap-2">
+                <select
+                  value={form.colour_code}
+                  onChange={e => handleColourChange(e.target.value)}
+                  className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+                >
+                  {COLOUR_OPTIONS.map(c => (
+                    <option key={c.code} value={c.code} className="text-slate-900 bg-white">{c.name}</option>
+                  ))}
+                </select>
+                <div
+                  className="w-9 h-9 rounded-lg border border-slate-300 shrink-0 shadow"
+                  style={{ backgroundColor: COLOUR_HEX_MAP[form.colour_code] || '#38bdf8' }}
+                ></div>
+              </div>
+            </div>
+            <div>
+              <label className="block text-slate-700 mb-1 font-medium">Initial Vessel (Optional)</label>
+              <select
+                value={form.machine_id || ''}
+                onChange={e => setForm({ ...form, machine_id: e.target.value ? Number(e.target.value) : null })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+              >
+                <option value="" className="text-slate-900 bg-white">Auto-Assign (DBR Rule)</option>
+                {machines.map(m => (
+                  <option key={m.id} value={m.id} className="text-slate-900 bg-white">{m.code} (Cap: {m.capacity_kg}kg)</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-700 text-slate-600 font-bold border border-slate-300 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow cursor-pointer disabled:opacity-50"
+            >
+              {loading ? "Adding..." : "Add & Schedule"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// 5. Delete Order Confirmation Modal
+function MatrixDeleteConfirmModal({ order, onClose, onConfirm, loading }) {
+  if (!order) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel w-full max-w-sm p-6 border border-rose-500/50 shadow-2xl bg-white rounded-2xl space-y-4">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-200">
+          <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-center text-rose-600">
+            <i data-lucide="trash-2" className="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Delete Order</h3>
+            <p className="text-xs text-slate-400">{order.order_number}</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Are you sure you want to delete order <strong>{order.order_number}</strong> ({order.quantity_kg}kg)? All assigned production slots will be removed, and downstream machine dispatches will be re-optimized.
+        </p>
+
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-700 text-slate-600 text-xs font-bold border border-slate-300 transition-all cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onConfirm}
+            className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow cursor-pointer disabled:opacity-50"
+          >
+            {loading ? "Deleting..." : "Delete & Reorganize"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 6. Excel Import Orders Modal (.xlsx upload)
+function ExcelImportModal({ onClose, onImportSuccess, showToast }) {
+  const [file, setFile] = React.useState(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!file) return;
+    setUploading(true);
+    setResult(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/orders/import-excel', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.detail || data.error || 'Failed to import Excel file.', 'error');
+        setUploading(false);
+        return;
+      }
+      setResult(data);
+      showToast(data.message || 'Orders imported and scheduled successfully!', 'success');
+      setTimeout(() => {
+        onImportSuccess();
+        onClose();
+      }, 1200);
+    } catch (err) {
+      showToast('Network error during Excel upload: ' + err.message, 'error');
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="glass-panel w-full max-w-md p-6 border border-blue-500/50 shadow-2xl bg-white rounded-2xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+              <i data-lucide="file-spreadsheet" className="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Import Orders from Excel</h3>
+              <p className="text-xs text-slate-400">Upload .xlsx production schedule template</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+            <i data-lucide="x" className="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div className="p-5 border-2 border-dashed border-slate-300 rounded-xl text-center bg-slate-50 hover:bg-slate-100/80 transition-colors cursor-pointer relative">
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={e => setFile(e.target.files[0])}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              required
+            />
+            <i data-lucide="upload-cloud" className="w-8 h-8 text-blue-600 mx-auto mb-2"></i>
+            {file ? (
+              <div>
+                <p className="font-bold text-slate-900">{file.name}</p>
+                <p className="text-[11px] text-slate-500 font-mono">{(file.size / 1024).toFixed(1)} KB</p>
+              </div>
+            ) : (
+              <div>
+                <p className="font-bold text-slate-800">Select or drop Excel (.xlsx) file</p>
+                <p className="text-[11px] text-slate-400 mt-1">Columns: Job number, Product ID, Customer level, Quantity, Colour, Due Date, Delivery time</p>
+              </div>
+            )}
+          </div>
+
+          {result && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center gap-2">
+              <i data-lucide="check-circle" className="w-4 h-4 text-emerald-600 shrink-0"></i>
+              <span>{result.message}</span>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold border border-slate-300 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!file || uploading}
+              className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow cursor-pointer disabled:opacity-50"
+            >
+              {uploading ? "Importing & Optimizing..." : "Upload & Schedule"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// 5. PRODUCTION PLANNING MATRIX & DAILY AGENDA VIEW
+// =========================================================================
+function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgendaDays, onSelectOrder, onSelectSlot, onRefresh, showToast }) {
+  // Local states
+  const [localMatrix, setLocalMatrix] = React.useState(planningMatrix || null);
+  const [viewMode, setViewMode] = React.useState('matrix'); // 'matrix' (default Excel table) or 'timeline' (shift detail)
+  const [matrixSearch, setMatrixSearch] = React.useState('');
+  const [selectedDayIdx, setSelectedDayIdx] = React.useState(0);
+  const [isGrouped, setIsGrouped] = React.useState(true);
+  const [filterMachine, setFilterMachine] = React.useState('ALL');
+  const [filterShift, setFilterShift] = React.useState('ALL');
+  const [filterStatus, setFilterStatus] = React.useState('ALL');
+
+  // Matrix Modals
+  const [cellActionData, setCellActionData] = React.useState(null);
+  const [assignModalData, setAssignModalData] = React.useState(null);
+  const [editRowOrder, setEditRowOrder] = React.useState(null);
+  const [addOrderOpen, setAddOrderOpen] = React.useState(false);
+  const [deleteOrder, setDeleteOrder] = React.useState(null);
+  const [excelImportOpen, setExcelImportOpen] = React.useState(false);
+
+  // Column Sorting state (default: order_number ascending)
+  const [sortField, setSortField] = React.useState('order_number');
+  const [sortDirection, setSortDirection] = React.useState('asc');
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Reorganizing states
+  const [reorganizingStep, setReorganizingStep] = React.useState(null);
+  const [diffData, setDiffData] = React.useState(null);
+  const [lockedConflict, setLockedConflict] = React.useState(null);
+  const [pendingReq, setPendingReq] = React.useState(null);
+  const [lockingOrderId, setLockingOrderId] = React.useState(null);
+  const [actionLoading, setActionLoading] = React.useState(false);
+  const [reorganizeMsg, setReorganizeMsg] = React.useState(null);
+
+  // Keep localMatrix in sync with planningMatrix prop
+  React.useEffect(() => {
+    if (planningMatrix) {
+      setLocalMatrix(planningMatrix);
+    }
+  }, [planningMatrix]);
+
+  // Fetch matrix data independently when needed
+  const fetchMatrix = async () => {
+    try {
+      const res = await fetch(`/api/schedule/planning-matrix?days=${agendaDays}`);
+      const data = await res.json();
+      setLocalMatrix(data);
+    } catch (err) {
+      console.error("Failed to load planning matrix:", err);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchMatrix();
+  }, [agendaDays]);
+
+  React.useEffect(() => {
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  });
+
+  // Handle Matrix manual edit action with complete TOC DBR reorganization
+  const handleMatrixAction = async (reqData, forceOverride = false, forceUnlockConflicts = false) => {
+    setPendingReq(reqData);
+    setActionLoading(true);
+    setReorganizingStep(1);
+
+    const t1 = setTimeout(() => setReorganizingStep(2), 200);
+    const t2 = setTimeout(() => setReorganizingStep(3), 450);
+    const t3 = setTimeout(() => setReorganizingStep(4), 700);
+
+    try {
+      const res = await fetch('/api/schedule/matrix/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...reqData,
+          force_override: forceOverride,
+          force_unlock_conflicts: forceUnlockConflicts
+        })
+      });
+      const data = await res.json();
+
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+
+      if (data.conflict) {
+        setReorganizingStep(null);
+        setActionLoading(false);
+        setLockedConflict({ ...data, pendingReq: reqData });
+        return;
+      }
+
+      if (data.warning && !forceOverride) {
+        setReorganizingStep(null);
+        setActionLoading(false);
+        if (window.confirm(`${data.warning}\n\nDo you wish to force override and proceed?`)) {
+          handleMatrixAction(reqData, true, forceUnlockConflicts);
+        }
+        return;
+      }
+
+      if (!data.success) {
+        setReorganizingStep(null);
+        setActionLoading(false);
+        alert(data.error || 'Failed to reorganize schedule.');
+        return;
+      }
+
+      // Success step
+      setReorganizingStep(5);
+      setTimeout(async () => {
+        setReorganizingStep(null);
+        setActionLoading(false);
+        setCellActionData(null);
+        setAssignModalData(null);
+        setEditRowOrder(null);
+        setAddOrderOpen(false);
+        setDeleteOrder(null);
+        setLockedConflict(null);
+        setPendingReq(null);
+        setReorganizeMsg(data.message);
+        if (data.diff) {
+          setDiffData(data.diff);
+        }
+        await onRefresh();
+        await fetchMatrix();
+        showToast(data.message || 'Schedule re-optimized successfully!', 'success');
+      }, 400);
+
+    } catch (err) {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      setReorganizingStep(null);
+      setActionLoading(false);
+      showToast('Error communicating with scheduler: ' + err.message, 'error');
+    }
+  };
+
+  // Quick Lock/Unlock toggle for an order
+  const handleToggleOrderLock = async (orderId) => {
+    setLockingOrderId(orderId);
+    try {
+      await handleMatrixAction({ action: 'TOGGLE_LOCK', order_id: orderId });
+    } finally {
+      setLockingOrderId(null);
+    }
+  };
+
+  // Planning Matrix data derived values
+  const matrixMachines = localMatrix?.machines || machines || [];
+  const matrixOrders = localMatrix?.orders || [];
+  const activeConstraint = localMatrix?.active_constraint || null;
+  const matrixSummary = localMatrix?.summary || {};
+
+  // Filter and sort matrix orders
+  const filteredMatrixOrders = React.useMemo(() => {
+    let list = matrixOrders;
+    if (matrixSearch.trim()) {
+      const q = matrixSearch.toLowerCase();
+      list = list.filter(o =>
+        (o.order_number || '').toLowerCase().includes(q) ||
+        (o.customer_name || '').toLowerCase().includes(q) ||
+        (o.cloth_type || '').toLowerCase().includes(q) ||
+        (o.colour_name || '').toLowerCase().includes(q)
+      );
+    }
+
+    return [...list].sort((a, b) => {
+      let valA, valB;
+      if (sortField === 'order_number') {
+        const numA = parseInt(String(a.order_number).replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(String(b.order_number).replace(/\D/g, ''), 10) || 0;
+        return sortDirection === 'asc' ? numA - numB : numB - numA;
+      } else if (sortField === 'due_date') {
+        valA = a.due_day !== undefined ? a.due_day : 999;
+        valB = b.due_day !== undefined ? b.due_day : 999;
+      } else if (sortField === 'planned_day') {
+        valA = a.planned_day || 999;
+        valB = b.planned_day || 999;
+      } else if (sortField === 'quantity_kg') {
+        valA = a.quantity_kg || 0;
+        valB = b.quantity_kg || 0;
+      } else {
+        valA = a[sortField] || '';
+        valB = b[sortField] || '';
+      }
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [matrixOrders, matrixSearch, sortField, sortDirection]);
+
+  // Timeline mode tasks extraction (from agenda prop)
+  const days = agenda?.days || [];
+  const allFlatTasks = React.useMemo(() => {
+    const list = [];
+    days.forEach(d => {
+      ['SHIFT_A', 'SHIFT_B', 'SHIFT_C'].forEach(sKey => {
+        const shiftObj = d.shifts?.[sKey];
+        (shiftObj?.tasks || []).forEach(t => {
+          list.push({
+            ...t,
+            date: d.date,
+            day_name: d.day_name,
+            formatted_date: d.formatted_date,
+            shift_key: sKey,
+            shift_label: t.shift_label || shiftObj.name || sKey
+          });
+        });
+      });
+    });
+    return list;
+  }, [days]);
+
+  const filteredTimelineTasks = React.useMemo(() => {
+    return allFlatTasks.filter(t => {
+      if (selectedDayIdx !== null && days[selectedDayIdx] && t.date !== days[selectedDayIdx].date) return false;
+      if (filterMachine !== 'ALL' && String(t.machine_id) !== String(filterMachine)) return false;
+      if (filterShift !== 'ALL' && t.shift_key !== filterShift && t.shift !== filterShift) return false;
+      if (filterStatus !== 'ALL' && t.status !== filterStatus) return false;
+      return true;
+    });
+  }, [allFlatTasks, selectedDayIdx, filterMachine, filterShift, filterStatus, days]);
+
+  return (
+    <div className="space-y-4">
+      {/* 1. Re-Optimization Success Diff Notification Banner */}
+      {reorganizeMsg && (
+        <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 border border-cyan-500/50 shadow-lg flex items-center justify-between gap-3 text-xs text-cyan-200 animate-fadeIn">
+          <div className="flex items-center gap-2.5">
+            <span className="p-1 rounded-full bg-cyan-500/20 text-blue-600">
+              <i data-lucide="check-circle-2" className="w-4 h-4"></i>
+            </span>
+            <span className="font-semibold">{reorganizeMsg}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {diffData && (
+              <button
+                onClick={() => setDiffData(diffData)}
+                className="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[11px] transition-all cursor-pointer"
+              >
+                View Changes
+              </button>
+            )}
+            <button
+              onClick={() => setReorganizeMsg(null)}
+              className="text-slate-600 hover:text-slate-900 p-1"
+            >
+              <i data-lucide="x" className="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 1B. Due Date Capacity Shortage Alert Banner */}
+      {matrixSummary?.due_date_shortages_count > 0 && (
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-300 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-rose-900 animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-600 shrink-0">
+              <i data-lucide="alert-triangle" className="w-5 h-5"></i>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-300">
+                  DUE DATE CAPACITY SHORTAGE DETECTED
+                </span>
+                <span className="font-bold">
+                  {matrixSummary.due_date_shortages_count} Order{matrixSummary.due_date_shortages_count > 1 ? 's' : ''} exceed available machine capacity before due date!
+                </span>
+              </div>
+              <p className="text-[11px] text-rose-700 mt-0.5">
+                Eligible machines lack sufficient cumulative capacity before the customer deadline. Orders have been scheduled sequentially across subsequent production days to prevent daily capacity overloads.
+              </p>
+            </div>
+          </div>
+          {matrixSummary.late_orders_count > 0 && (
+            <span className="px-2.5 py-1 rounded bg-rose-200 text-rose-900 font-bold text-[11px] shrink-0 border border-rose-300">
+              {matrixSummary.late_orders_count} Late Order{matrixSummary.late_orders_count > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* 2. Active TOC Constraint (Drum) Banner - DYNAMICALLY CALCULATED */}
+      {activeConstraint && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-950/40 via-[#0b1329] to-slate-900 border border-amber-500/50 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-700 shrink-0">
+              <i data-lucide="zap" className="w-5 h-5 animate-pulse"></i>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded border border-amber-500/40">
+                  ACTIVE TOC DRUM CONSTRAINT
+                </span>
+                <span className="text-xs font-bold text-slate-900">
+                  {activeConstraint.resource_name} ({activeConstraint.resource_code})
+                </span>
+              </div>
+              <div className="text-xs text-slate-600 mt-0.5">
+                Current Utilization: <strong className="text-amber-800">{activeConstraint.utilization_pct}%</strong> | Scheduled Workload: <strong className="text-slate-900 font-bold">{activeConstraint.current_load_kg} kg</strong> of {activeConstraint.capacity_kg} kg nominal
+              </div>
+            </div>
+          </div>
+          <div className="text-[11px] text-slate-400 hidden lg:flex items-center gap-1.5">
+            <i data-lucide="shield-check" className="w-3.5 h-3.5 text-blue-600"></i>
+            <span>TOC 5 Focusing Steps Active • Re-evaluated dynamically on each edit</span>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Dynamic KPI Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="glass-card p-3.5 border border-slate-200 flex items-center gap-3 bg-white/90 rounded-xl">
+          <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+            <i data-lucide="package" className="w-4 h-4"></i>
           </div>
           <div>
             <div className="text-[10px] uppercase font-bold text-slate-400">Planned Dyeing</div>
-            <div className="text-sm font-bold text-white">{currentDay.total_kg} kg</div>
+            <div className="text-sm font-bold text-slate-900">
+              {(matrixSummary.planned_dyeing_kg || 0).toLocaleString()} kg
+            </div>
           </div>
         </div>
 
-        <div className="glass-card p-3.5 border border-factory-border/50 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-emerald-950/60 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-            <i data-lucide="check-circle-2" className="w-5 h-5"></i>
+        <div className="glass-card p-3.5 border border-slate-200 flex items-center gap-3 bg-white/90 rounded-xl">
+          <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
+            <i data-lucide="check-circle-2" className="w-4 h-4"></i>
           </div>
           <div>
-            <div className="text-[10px] uppercase font-bold text-slate-400">Production Batches</div>
-            <div className="text-sm font-bold text-white">{currentDay.jobs_count} scheduled</div>
+            <div className="text-[10px] uppercase font-bold text-slate-400">Scheduled Batches</div>
+            <div className="text-sm font-bold text-slate-900">
+              {matrixSummary.total_batches || 0} batches
+            </div>
           </div>
         </div>
 
-        <div className="glass-card p-3.5 border border-factory-border/50 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-950/60 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
-            <i data-lucide="clock" className="w-5 h-5"></i>
+        <div className="glass-card p-3.5 border border-slate-200 flex items-center gap-3 bg-white/90 rounded-xl">
+          <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-400 shrink-0">
+            <i data-lucide="sparkles" className="w-4 h-4"></i>
           </div>
           <div>
             <div className="text-[10px] uppercase font-bold text-slate-400">Changeovers / Setup</div>
-            <div className="text-sm font-bold text-white">{currentDay.changeover_min} mins total</div>
+            <div className="text-sm font-bold text-slate-900">
+              {matrixSummary.total_changeover_min || 0} mins
+            </div>
           </div>
         </div>
 
-        <div className="glass-card p-3.5 border border-factory-border/50 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-amber-950/60 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-            <i data-lucide="wrench" className="w-5 h-5"></i>
+        <div className="glass-card p-3.5 border border-slate-200 flex items-center gap-3 bg-white/90 rounded-xl">
+          <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200 border border-amber-500/30 flex items-center justify-center text-amber-700 shrink-0">
+            <i data-lucide="wrench" className="w-4 h-4"></i>
           </div>
           <div>
             <div className="text-[10px] uppercase font-bold text-slate-400">Maintenance Downtime</div>
-            <div className="text-sm font-bold text-amber-300">{currentDay.maintenance_hours} hrs</div>
+            <div className="text-sm font-bold text-amber-800">
+              {matrixSummary.maintenance_hours || 0} hrs
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Shifts Breakdown for Selected Day */}
-      <div className="space-y-4">
-        {['SHIFT_A', 'SHIFT_B', 'SHIFT_C'].map(shiftKey => {
-          const shift = currentDay.shifts[shiftKey];
-          const tasks = shift?.tasks || [];
-          return (
-            <div key={shiftKey} className="glass-panel p-5 border border-factory-border/60 space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
-                  <h3 className="text-sm font-bold text-white">{shift.name}</h3>
+      {/* 3B. Compact Machine Load Summary */}
+      <div className="glass-panel p-3.5 border border-slate-200 rounded-xl bg-white/80 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
+            <i data-lucide="cpu" className="w-4 h-4 text-blue-600"></i>
+            <span>Machine Fleet Load & Utilization Summary</span>
+          </div>
+          <span className="text-[10px] text-slate-400 font-mono">Real-Time DBR Capacity</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          {(localMatrix?.machine_load_summary || []).map(m => (
+            <div
+              key={m.id}
+              className={`p-2.5 rounded-lg border transition-all ${
+                m.is_bottleneck
+                  ? 'bg-amber-50 border border-amber-200 border-amber-500/60 ring-1 ring-amber-500/40'
+                  : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-slate-900">{m.code}</span>
+                {m.is_bottleneck ? (
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-800 border border-amber-500/50 uppercase animate-pulse">
+                    Drum
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-400 font-medium">{m.utilization_pct}%</span>
+                )}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-1 truncate" title={m.name}>{m.name}</div>
+              <div className="flex items-center justify-between text-[10px] text-slate-600 mt-1 pt-1 border-t border-slate-200">
+                <span>Cap: {m.capacity_kg}kg</span>
+                <span className="font-semibold text-blue-700">{m.current_load_kg}kg</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 3C. Sequential Day Schedule Summary with Machine Breakdown */}
+      <div className="glass-panel p-3.5 border border-slate-200 rounded-xl bg-white/80 space-y-2">
+        <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
+          <div className="flex items-center gap-1.5">
+            <i data-lucide="calendar" className="w-4 h-4 text-blue-600"></i>
+            <span>Daily Production Capacity & Machine Breakdown (Day 1 – Day {agendaDays})</span>
+          </div>
+          <span className="text-[10px] text-slate-400">Hard Daily Machine Capacities Enforced (Zero Overload)</span>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-1.5 scrollbar-thin">
+          {(localMatrix?.day_summary || []).map(ds => (
+            <div
+              key={ds.day}
+              className="flex-shrink-0 p-3 rounded-xl bg-slate-50 border border-slate-200 min-w-[210px] flex flex-col justify-between space-y-2 shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase text-blue-600">{ds.label}</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    ds.utilization_pct >= 100 ? 'bg-amber-500/20 text-amber-800 border border-amber-500/40' :
+                    ds.utilization_pct > 0 ? 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40' :
+                    'bg-slate-800 text-slate-400'
+                  }`}>
+                    {ds.utilization_pct}%
+                  </span>
                 </div>
-                <span className="text-xs text-slate-400 font-medium">
-                  {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
-                </span>
+                <div className="mt-1 flex items-baseline justify-between text-xs">
+                  <span className="font-extrabold text-slate-900">{ds.total_kg.toLocaleString()} kg</span>
+                  <span className="text-[10px] text-slate-400 font-medium">/ {(ds.factory_capacity_kg || 4800).toLocaleString()} kg</span>
+                </div>
+                <div className="text-[10px] text-slate-400 flex items-center justify-between mt-0.5">
+                  <span>Rem: <strong className="text-slate-700">{(ds.remaining_kg || 0).toLocaleString()} kg</strong></span>
+                  <span>{ds.active_jobs} batches</span>
+                </div>
               </div>
 
-              {tasks.length === 0 ? (
-                <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800/50 text-xs text-slate-500 italic text-center">
-                  No active production or maintenance scheduled in this shift. Vessel capacity in reserve.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                  {tasks.map((task, tIdx) => {
-                    if (task.type === 'MAINTENANCE') {
-                      return (
-                        <div
-                          key={task.id || tIdx}
-                          className="p-4 rounded-xl border border-amber-500/50 bg-amber-950/30 text-amber-100 flex flex-col justify-between shadow-lg"
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-2">
-                              <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/30 text-amber-300 border border-amber-500/50 flex items-center gap-1">
-                                <i data-lucide="wrench" className="w-2.5 h-2.5 text-amber-400"></i>
-                                <span>MAINTENANCE MODE</span>
-                              </span>
-                              <span className="text-[11px] font-bold text-amber-300">
-                                {task.start_time_str} – {task.end_time_str} ({task.duration_hours}h)
-                              </span>
-                            </div>
-                            <h4 className="text-xs font-bold text-white">{task.machine_name}</h4>
-                            <p className="text-[11px] text-amber-200 mt-1">{task.title}</p>
-                            {task.notes && (
-                              <p className="text-[10px] text-amber-300/80 italic mt-1.5">{task.notes}</p>
-                            )}
-                          </div>
-                          <div className="mt-3 pt-2.5 border-t border-amber-500/30 text-[10px] text-amber-400 flex items-center justify-between">
-                            <span>Status: {task.status}</span>
-                            <span className="font-semibold">Vessel Reserved</span>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    // Production Task Card
-                    return (
+              {/* Machine breakdown for this day */}
+              {ds.machine_breakdown && ds.machine_breakdown.length > 0 && (
+                <div className="pt-2 border-t border-slate-200/80 space-y-1">
+                  <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Machine Daily Load</div>
+                  <div className="grid grid-cols-2 gap-1 text-[10px]">
+                    {ds.machine_breakdown.map(mb => (
                       <div
-                        key={task.id || tIdx}
-                        className="p-4 rounded-xl border border-factory-border/70 bg-[#070c18] hover:border-cyan-500/60 transition-all flex flex-col justify-between shadow-lg group"
+                        key={mb.code}
+                        className={`px-1.5 py-0.5 rounded border flex items-center justify-between ${
+                          mb.load_kg > 0
+                            ? (mb.utilization_pct >= 100 ? 'bg-amber-50 border border-amber-200 border-amber-600/50 text-amber-200' : 'bg-slate-50 border border-slate-200 border-slate-300 text-blue-700')
+                            : 'bg-white/50 border-slate-200 text-slate-500'
+                        }`}
+                        title={`${mb.name}: ${mb.load_kg} / ${mb.capacity_kg} kg (${mb.utilization_pct}%)`}
                       >
-                        <div>
-                          {/* Card Header: Timing & Freeze status */}
-                          <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className="text-xs font-bold text-cyan-300 flex items-center gap-1">
-                              <i data-lucide="clock" className="w-3 h-3 text-cyan-400"></i>
-                              <span>{task.start_time_str} – {task.end_time_str}</span>
-                              <span className="text-[10px] text-slate-400 font-normal">({task.duration_min}m)</span>
-                            </span>
-
-                            {task.is_locked ? (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-0.5">
-                                <i data-lucide="lock" className="w-2.5 h-2.5"></i>
-                                <span>{task.freeze_level === 'LOCKED' ? 'Locked' : 'Mostly Locked'}</span>
-                              </span>
-                            ) : (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                Flexible
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Machine & Target Job */}
-                          <div className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                            <i data-lucide="cpu" className="w-3 h-3 text-slate-400"></i>
-                            <span>{task.machine_name}</span>
-                          </div>
-
-                          {/* Order Details & Colour Swatch */}
-                          <div className="mt-2.5 flex items-start gap-2.5">
-                            <span
-                              className="w-4 h-4 rounded-full border border-white/40 shadow-sm shrink-0 mt-0.5"
-                              style={{
-                                backgroundColor:
-                                  task.colour_code === 'WHITE' ? '#ffffff' :
-                                  task.colour_code === 'ROYAL_BLUE' ? '#2563eb' :
-                                  task.colour_code === 'DEEP_NAVY' ? '#1e3a8a' :
-                                  task.colour_code === 'JET_BLACK' ? '#0f172a' :
-                                  task.colour_code === 'SCARLET_RED' ? '#dc2626' :
-                                  task.colour_code === 'PASTEL_PINK' ? '#f472b6' :
-                                  task.colour_code === 'SKY_BLUE' ? '#38bdf8' : '#eab308'
-                              }}
-                            ></span>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-bold text-white">{task.order_number}</span>
-                                <span className="text-[10px] text-slate-400 truncate">• {task.customer_name}</span>
-                              </div>
-                              <div className="text-[11px] text-slate-300 font-medium">
-                                <strong className="text-white">{task.quantity_kg} kg</strong> {task.cloth_type}
-                              </div>
-                              <div className="text-[10px] text-cyan-400">
-                                Shade: {task.colour_name}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Changeover Cleaning Requirement */}
-                          {task.changeover_min > 0 && (
-                            <div className="mt-2.5 p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-[10px] text-amber-300/90 flex items-center gap-1.5">
-                              <i data-lucide="sparkles" className="w-3 h-3 text-amber-400 shrink-0"></i>
-                              <span>Clean / Setup: <strong>{task.changeover_min} min</strong> ({task.cleaning_min}m wash)</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Card Footer: Operator & Action */}
-                        <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
-                          <span className="flex items-center gap-1">
-                            <i data-lucide="user" className="w-3 h-3 text-slate-500"></i>
-                            <span>{task.operator_name}</span>
-                          </span>
-
-                          <button
-                            onClick={() => onSelectOrder({ id: task.order_id, order_number: task.order_number })}
-                            className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 hover:text-white text-slate-300 font-bold transition-all text-[10px]"
-                          >
-                            Order Details
-                          </button>
-                        </div>
+                        <span className="font-bold">{mb.code}:</span>
+                        <span>{mb.load_kg}/{mb.capacity_kg}</span>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
+
+      {/* 4. Action Toolbar & View Mode Switcher */}
+      <div className="glass-panel p-3.5 border border-slate-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white">
+        <div className="flex items-center gap-2 flex-1 max-w-md">
+          {/* + Add Order Button */}
+          <button
+            onClick={() => setAddOrderOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow cursor-pointer shrink-0"
+          >
+            <i data-lucide="plus" className="w-3.5 h-3.5"></i>
+            <span>Add Order</span>
+          </button>
+
+          {/* Search Bar */}
+          <div className="relative w-full">
+            <i data-lucide="search" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+            <input
+              type="text"
+              placeholder="Search Order #, Customer, Fabric..."
+              value={matrixSearch}
+              onChange={e => setMatrixSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder-slate-400 text-xs focus:ring-1 focus:ring-cyan-500"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Horizon Selector */}
+          <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200">
+            <button
+              onClick={() => onChangeAgendaDays(7)}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                agendaDays === 7 ? 'bg-white text-blue-700 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              1 Week (7d)
+            </button>
+            <button
+              onClick={() => onChangeAgendaDays(14)}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                agendaDays === 14 ? 'bg-white text-blue-700 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              2 Weeks (14d)
+            </button>
+            <button
+              onClick={() => onChangeAgendaDays(30)}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                agendaDays === 30 ? 'bg-white text-blue-700 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              1 Month (30d)
+            </button>
+          </div>
+
+          {/* View Mode Switcher */}
+          <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200">
+            <button
+              onClick={() => setViewMode('matrix')}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'matrix' ? 'bg-white text-blue-700 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Excel-like Production Planning Matrix"
+            >
+              <i data-lucide="grid" className="w-3.5 h-3.5"></i>
+              <span>Matrix View</span>
+            </button>
+            <button
+              onClick={() => setViewMode('timeline')}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'timeline' ? 'bg-white text-blue-700 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Shift detail view (Shift A, B, C)"
+            >
+              <i data-lucide="list" className="w-3.5 h-3.5"></i>
+              <span>Shift Details</span>
+            </button>
+          </div>
+
+          {/* Excel Import Button */}
+          <button
+            onClick={() => setExcelImportOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs text-xs font-bold transition-all cursor-pointer"
+            title="Import Orders from Excel (.xlsx)"
+          >
+            <i data-lucide="upload" className="w-3.5 h-3.5 text-emerald-700"></i>
+            <span className="hidden sm:inline">Import Excel</span>
+          </button>
+
+          {/* Excel Export Button */}
+          <a
+            href="/api/reports/excel"
+            download
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs text-xs font-medium transition-all"
+            title="Download Excel Production Planning Matrix"
+          >
+            <i data-lucide="file-spreadsheet" className="w-3.5 h-3.5 text-emerald-600"></i>
+            <span className="hidden sm:inline">Export Matrix</span>
+          </a>
+        </div>
+      </div>
+
+      {/* 5A. PRIMARY VIEW: EXCEL-LIKE PRODUCTION PLANNING MATRIX */}
+      {/* 5A. PRIMARY VIEW: EXCEL-LIKE PRODUCTION PLANNING MATRIX */}
+      {viewMode === 'matrix' && (
+        <div className="border border-slate-300/80 rounded-2xl bg-white overflow-hidden shadow-2xl">
+          <div className="overflow-auto max-h-[720px] scrollbar-thin">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                {/* 1. Super Header */}
+                <tr className="border-b border-slate-300/80 h-[44px]">
+                  <th colSpan="5" className="sticky left-0 top-0 z-40 bg-[#F8FAFC] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-800 border-r border-slate-300/80 shadow-md min-w-[660px]">
+                    ORDER INFORMATION
+                  </th>
+                  <th
+                    colSpan={matrixMachines.length}
+                    className="sticky top-0 z-30 bg-blue-50 border-b border-blue-200 px-4 py-2.5 text-center text-sm font-black uppercase tracking-wider text-blue-900"
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <i data-lucide="cpu" className="w-4 h-4 text-blue-600"></i>
+                      <span>WORK — DYNAMIC MACHINE ALLOCATION & TOC SEQUENCING</span>
+                    </div>
+                  </th>
+                </tr>
+
+                {/* 2. Sub-headers */}
+                <tr className="border-b border-slate-300/80 bg-white text-xs h-[48px]">
+                  {/* Sticky Col 1: Order Number */}
+                  <th
+                    onClick={() => handleSort('order_number')}
+                    className="sticky left-0 top-[44px] z-40 bg-white px-3.5 py-3 font-extrabold text-slate-800 min-w-[155px] border-r border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors uppercase tracking-wide text-xs"
+                    title="Sort by Job Number"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>Order Number</span>
+                      <span className="text-xs text-slate-400">
+                        {sortField === 'order_number' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </div>
+                  </th>
+                  {/* Sticky Col 2: Quantity */}
+                  <th
+                    onClick={() => handleSort('quantity_kg')}
+                    className="sticky left-[155px] top-[44px] z-40 bg-white px-3 py-3 font-extrabold text-slate-800 text-right min-w-[100px] border-r border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors uppercase tracking-wide text-xs"
+                    title="Sort by Quantity"
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      <span>Qty (kg)</span>
+                      <span className="text-xs text-slate-400">
+                        {sortField === 'quantity_kg' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </div>
+                  </th>
+                  {/* Sticky Col 3: Due Date */}
+                  <th
+                    onClick={() => handleSort('due_date')}
+                    className="sticky left-[255px] top-[44px] z-40 bg-white px-3 py-3 font-extrabold text-slate-800 text-center min-w-[160px] border-r border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors uppercase tracking-wide text-xs"
+                    title="Sort by Customer Due Date"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Due Date</span>
+                      <span className="text-xs text-slate-400">
+                        {sortField === 'due_date' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </div>
+                  </th>
+                  {/* Sticky Col 4: Planned Day */}
+                  <th
+                    onClick={() => handleSort('planned_day')}
+                    className="sticky left-[415px] top-[44px] z-40 bg-white px-3 py-3 font-extrabold text-slate-800 text-center min-w-[135px] border-r border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors uppercase tracking-wide text-xs"
+                    title="Sort by Planned Production Day"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Planned Day</span>
+                      <span className="text-xs text-slate-400">
+                        {sortField === 'planned_day' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </div>
+                  </th>
+                  {/* Sticky Col 5: Action Controls */}
+                  <th className="sticky left-[550px] top-[44px] z-40 bg-white px-2.5 py-3 font-extrabold text-slate-800 text-center min-w-[110px] border-r border-slate-300/80 shadow-lg uppercase tracking-wide text-xs">
+                    Actions
+                  </th>
+
+                  {/* Dynamic Machine Headers */}
+                  {matrixMachines.map(m => (
+                    <th
+                      key={m.id}
+                      className={`top-[44px] z-20 px-3.5 py-2.5 text-center border-r border-slate-200 min-w-[145px] transition-colors ${
+                        m.is_bottleneck ? 'bg-amber-50 border border-amber-200 ring-1 ring-inset ring-amber-500/40' : 'bg-white'
+                      }`}
+                    >
+                      <div className="font-black text-slate-900 text-sm flex items-center justify-center gap-1">
+                        <span>{m.code}</span>
+                        {m.is_bottleneck && (
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" title="Active TOC Drum"></span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-500 font-semibold mt-0.5">Cap: {m.capacity_kg} kg</div>
+                      <div className="text-xs text-slate-500 font-semibold">Load: {m.current_load_kg} kg</div>
+                      <div className="mt-1">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black inline-block ${
+                          m.is_bottleneck
+                            ? 'bg-amber-500/30 text-amber-900 border border-amber-500/50 animate-pulse'
+                            : m.utilization_pct > 75
+                            ? 'bg-blue-500/20 text-blue-800 border border-blue-500/30'
+                            : 'bg-emerald-500/20 text-emerald-800 border border-emerald-500/30'
+                        }`}>
+                          {m.is_bottleneck ? `DRUM ${m.utilization_pct}%` : `${m.utilization_pct}%`}
+                        </span>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-200 text-sm">
+                {filteredMatrixOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={5 + matrixMachines.length} className="p-8 text-center text-slate-500 text-sm italic">
+                      No production orders found matching the filter criteria.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredMatrixOrders.map((o, rIdx) => {
+                    return (
+                      <tr key={o.order_id || rIdx} className="hover:bg-blue-50/40 transition-colors group">
+                        {/* Sticky Col 1: Order Number */}
+                        <td className="sticky left-0 z-20 bg-white group-hover:bg-[#f1f5f9] px-3.5 py-3 border-r border-slate-200 whitespace-nowrap min-w-[155px]">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-3 h-3 rounded-full border border-slate-300 shrink-0"
+                              style={{ backgroundColor: COLOUR_HEX_MAP[o.colour_code] || '#38bdf8' }}
+                              title={o.colour_name}
+                            ></span>
+                            <button
+                              onClick={() => onSelectOrder({ id: o.order_id, order_number: o.order_number })}
+                              className="font-mono text-sm font-black text-blue-700 hover:text-blue-900 hover:underline flex items-center gap-1 cursor-pointer"
+                              title="Click to view full order stages and readiness"
+                            >
+                              <span>{o.order_number}</span>
+                              <i data-lucide="external-link" className="w-3.5 h-3.5 opacity-70"></i>
+                            </button>
+                          </div>
+                          <div className="text-xs text-slate-600 font-semibold truncate max-w-[150px] mt-0.5" title={o.cloth_type}>
+                            {o.cloth_type}
+                          </div>
+                          {o.customer_name && (
+                            <div className="text-[11px] text-slate-500 font-medium truncate max-w-[150px]" title={o.customer_name}>
+                              {o.customer_name}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Sticky Col 2: Quantity */}
+                        <td className="sticky left-[155px] z-20 bg-white group-hover:bg-[#f1f5f9] px-3 py-3 border-r border-slate-200 text-right whitespace-nowrap text-sm font-black text-slate-900 min-w-[100px]">
+                          {o.quantity_kg?.toLocaleString()} kg
+                        </td>
+
+                        {/* Sticky Col 3: Due Date */}
+                        <td className="sticky left-[255px] z-20 bg-white group-hover:bg-[#f1f5f9] px-3 py-3 border-r border-slate-200 text-center whitespace-nowrap min-w-[160px]">
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                              <span className="text-sm font-black font-mono">{o.due_day_label || 'Day 7'}</span>
+                              <span className="text-xs text-slate-600 font-medium">({o.due_date_formatted || '-'})</span>
+                            </div>
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-black tracking-wide uppercase ${
+                              o.is_late || o.due_status === 'LATE'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                : (o.due_status === 'DUE_TODAY'
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-300')
+                            }`}>
+                              {o.due_status_label || 'ON TIME'}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Sticky Col 4: Planned Day */}
+                        <td className="sticky left-[415px] z-20 bg-white group-hover:bg-[#f1f5f9] px-3 py-3 border-r border-slate-200 text-center whitespace-nowrap min-w-[135px]">
+                          <span className={`px-3 py-1 rounded-full text-xs font-black ${
+                            o.planned_day === 1 ? 'bg-cyan-100 text-cyan-900 border border-cyan-300' :
+                            o.planned_day === 2 ? 'bg-blue-100 text-blue-900 border border-blue-300' :
+                            'bg-slate-100 text-slate-800 border border-slate-300'
+                          }`}>
+                            {o.planned_day_label}
+                          </span>
+                        </td>
+
+                        {/* Sticky Col 5: Action Controls */}
+                        <td className="sticky left-[550px] z-20 bg-white group-hover:bg-[#f1f5f9] px-2.5 py-3 border-r border-slate-300/80 shadow-lg text-center whitespace-nowrap min-w-[110px]">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* Toggle Lock Button */}
+                            <button
+                              onClick={() => handleToggleOrderLock(o.order_id)}
+                              disabled={lockingOrderId === o.order_id}
+                              className={`p-2 rounded-lg border transition-all cursor-pointer ${
+                                o.is_locked
+                                  ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
+                                  : 'bg-slate-100 border-slate-300 text-slate-600 hover:text-emerald-700 hover:border-emerald-400'
+                              }`}
+                              title={o.is_locked ? "Order is LOCKED. Click to unlock." : "Order is FLEXIBLE. Click to lock."}
+                            >
+                              <i data-lucide={o.is_locked ? "lock" : "unlock"} className={`w-4 h-4 ${lockingOrderId === o.order_id ? 'animate-spin' : ''}`}></i>
+                            </button>
+
+                            {/* Edit Row Button */}
+                            <button
+                              onClick={() => setEditRowOrder(o)}
+                              className="p-2 rounded-lg bg-slate-100 hover:bg-cyan-600 text-slate-700 hover:text-white border border-slate-300 transition-all cursor-pointer"
+                              title="Edit order quantity, due date, or planned day"
+                            >
+                              <i data-lucide="edit-3" className="w-4 h-4"></i>
+                            </button>
+
+                            {/* Delete Order Button */}
+                            <button
+                              onClick={() => setDeleteOrder(o)}
+                              className="p-2 rounded-lg bg-slate-100 hover:bg-rose-600 text-slate-600 hover:text-white border border-slate-300 transition-all cursor-pointer"
+                              title="Delete order"
+                            >
+                              <i data-lucide="trash-2" className="w-4 h-4"></i>
+                            </button>
+                          </div>
+                        </td>
+
+                        {/* Dynamic Machine Work Cells */}
+                        {matrixMachines.map(m => {
+                          const cell = o.machine_cells?.[String(m.id)];
+                          const isAssigned = cell && cell.assigned;
+
+                          return (
+                            <td
+                              key={m.id}
+                              className={`p-2.5 text-center border-r border-slate-200 transition-colors ${
+                                isAssigned
+                                  ? (cell.is_locked ? 'bg-amber-50/60 hover:bg-amber-100/60' : 'bg-blue-50/60 hover:bg-blue-100/60')
+                                  : 'hover:bg-blue-50/40'
+                              }`}
+                            >
+                              {isAssigned ? (
+                                <button
+                                  onClick={() => setCellActionData({ order: o, machine: m, cell })}
+                                  className={`w-full py-2 px-2.5 rounded-lg font-mono text-sm font-bold transition-all flex flex-col items-center justify-center cursor-pointer shadow-sm border ${
+                                    cell.is_locked
+                                      ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
+                                      : 'bg-blue-50 border-blue-200 text-blue-900 hover:bg-blue-100'
+                                  }`}
+                                  title={`Assigned to ${m.code}. Click to Move, Remove, or Lock.`}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                                      style={{ backgroundColor: COLOUR_HEX_MAP[o.colour_code] || '#38bdf8' }}
+                                    ></span>
+                                    <span className="font-extrabold">{cell.order_label || o.short_order_number}</span>
+                                    {cell.is_locked && <i data-lucide="lock" className="w-3.5 h-3.5 text-amber-700 shrink-0"></i>}
+                                    {cell.warning && <i data-lucide="alert-triangle" className="w-3.5 h-3.5 text-amber-700 shrink-0" title={cell.warning}></i>}
+                                  </div>
+                                  <div className="text-xs text-slate-700 font-extrabold tracking-tight mt-1">
+                                    {(cell.quantity_kg || o.quantity_kg)?.toLocaleString()} kg
+                                  </div>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => setAssignModalData({ order: o, machine: m })}
+                                  className="w-full py-2 px-1 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-cyan-950/30 text-xs font-bold transition-all opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1 cursor-pointer"
+                                  title={`Click to assign order ${o.order_number} to ${m.code}`}
+                                >
+                                  <i data-lucide="plus" className="w-3.5 h-3.5"></i>
+                                  <span>Assign</span>
+                                </button>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 5B. SECONDARY VIEW: DETAILED SHIFT TIMELINE (SHIFT A, B, C) */}
+      {viewMode === 'timeline' && (
+        <div className="space-y-4">
+          {/* Day Navigator */}
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+            {days.map((d, idx) => (
+              <button
+                key={d.date}
+                onClick={() => setSelectedDayIdx(idx)}
+                className={`flex-shrink-0 px-3.5 py-2 rounded-xl border text-left transition-all min-w-[125px] cursor-pointer ${
+                  selectedDayIdx === idx
+                    ? 'bg-cyan-950/50 border-cyan-500 shadow-lg ring-1 ring-cyan-500 text-white'
+                    : 'bg-white/80 border-slate-200 text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <div className="text-[10px] uppercase font-bold text-blue-600">{d.rel_label}</div>
+                <div className="text-xs font-bold">{d.formatted_date.split(',')[0]}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">{d.jobs_count} batches • {d.total_kg} kg</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Timeline Table */}
+          <div className="glass-panel border border-slate-200 rounded-2xl overflow-hidden shadow-2xl bg-white">
+            <div className="overflow-x-auto max-h-[600px] scrollbar-thin">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-[#F8FAFC] text-[11px] font-bold text-slate-400 uppercase">
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-2">Day</th>
+                    <th className="py-2.5 px-2">Shift</th>
+                    <th className="py-2.5 px-2">Start</th>
+                    <th className="py-2.5 px-2">End</th>
+                    <th className="py-2.5 px-3">Machine</th>
+                    <th className="py-2.5 px-3">Order #</th>
+                    <th className="py-2.5 px-3">Customer</th>
+                    <th className="py-2.5 px-3">Fabric</th>
+                    <th className="py-2.5 px-2 text-right">Qty</th>
+                    <th className="py-2.5 px-3">Colour</th>
+                    <th className="py-2.5 px-2 text-center">Changeover</th>
+                    <th className="py-2.5 px-3">Operator</th>
+                    <th className="py-2.5 px-2 text-center">Status</th>
+                    <th className="py-2.5 px-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {filteredTimelineTasks.map((t, idx) => (
+                    <ScheduleTableRow
+                      key={t.id || idx}
+                      task={t}
+                      onEdit={() => handleMatrixAction({ action: 'UPDATE_ROW', order_id: t.order_id })}
+                      onToggleLock={() => handleToggleOrderLock(t.order_id)}
+                      onSelectOrder={() => onSelectOrder({ id: t.order_id, order_number: t.order_number })}
+                      isLocking={lockingOrderId === t.order_id}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. MODALS FOR PLANNING MATRIX EDITING */}
+
+      {/* A. Cell Action Modal */}
+      {cellActionData && (
+        <MatrixCellActionModal
+          data={cellActionData}
+          machines={matrixMachines}
+          onClose={() => setCellActionData(null)}
+          onMove={(targetMachId) => {
+            handleMatrixAction({
+              action: 'MOVE',
+              order_id: cellActionData.order.order_id,
+              machine_id: cellActionData.machine.id,
+              target_machine_id: targetMachId
+            });
+          }}
+          onRemove={() => {
+            handleMatrixAction({
+              action: 'REMOVE',
+              order_id: cellActionData.order.order_id,
+              machine_id: cellActionData.machine.id
+            });
+          }}
+          onToggleLock={() => handleToggleOrderLock(cellActionData.order.order_id)}
+          onSelectOrder={onSelectOrder}
+          loading={actionLoading}
+        />
+      )}
+
+      {/* B. Assign Order Modal */}
+      {assignModalData && (
+        <MatrixAssignModal
+          data={assignModalData}
+          onClose={() => setAssignModalData(null)}
+          onAssign={(day) => {
+            handleMatrixAction({
+              action: 'ASSIGN',
+              order_id: assignModalData.order.order_id,
+              target_machine_id: assignModalData.machine.id,
+              planned_day: day
+            });
+          }}
+          loading={actionLoading}
+        />
+      )}
+
+      {/* C. Edit Order Row Modal */}
+      {editRowOrder && (
+        <MatrixEditRowModal
+          order={editRowOrder}
+          onClose={() => setEditRowOrder(null)}
+          onSave={(formVals) => {
+            handleMatrixAction({
+              action: 'UPDATE_ROW',
+              order_id: editRowOrder.order_id,
+              ...formVals
+            });
+          }}
+          loading={actionLoading}
+        />
+      )}
+
+      {/* D. Add Order Modal */}
+      {addOrderOpen && (
+        <MatrixAddOrderModal
+          machines={matrixMachines}
+          onClose={() => setAddOrderOpen(false)}
+          onAdd={(formVals) => {
+            handleMatrixAction({
+              action: 'ADD_ORDER',
+              ...formVals
+            });
+          }}
+          loading={actionLoading}
+        />
+      )}
+
+      {/* E. Delete Order Confirmation Modal */}
+      {deleteOrder && (
+        <MatrixDeleteConfirmModal
+          order={deleteOrder}
+          onClose={() => setDeleteOrder(null)}
+          onConfirm={() => {
+            handleMatrixAction({
+              action: 'DELETE_ORDER',
+              order_id: deleteOrder.order_id
+            });
+          }}
+          loading={actionLoading}
+        />
+      )}
+
+      {/* E2. Excel Import Modal */}
+      {excelImportOpen && (
+        <ExcelImportModal
+          onClose={() => setExcelImportOpen(false)}
+          onImportSuccess={async () => {
+            await onRefresh();
+            await fetchMatrix();
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* F. Reorganizing Multi-Step Progress Overlay */}
+      {reorganizingStep !== null && (
+        <ReorganizingProgressModal
+          step={reorganizingStep}
+          machineName={pendingReq?.target_machine_id ? matrixMachines.find(m => m.id === pendingReq.target_machine_id)?.name : "Vessel Fleet"}
+        />
+      )}
+
+      {/* G. Locked Conflict Modal */}
+      {lockedConflict && (
+        <LockedConflictModal
+          conflictData={lockedConflict}
+          onKeepLocked={() => setLockedConflict(null)}
+          onUnlockAndOptimize={() => {
+            const req = lockedConflict.pendingReq;
+            setLockedConflict(null);
+            if (req) {
+              handleMatrixAction(req, false, true);
+            }
+          }}
+          onCancel={() => {
+            setLockedConflict(null);
+            setPendingReq(null);
+          }}
+        />
+      )}
+
+      {/* H. Reorganize Diff Modal */}
+      {diffData && (
+        <ReorganizeDiffModal
+          diff={diffData}
+          onClose={() => setDiffData(null)}
+        />
+      )}
     </div>
+  );
+}
+
+
+// 6. Individual Table Row Component
+function ScheduleTableRow({ task, onEdit, onToggleLock, onSelectOrder, isLocking }) {
+  if (task.type === 'MAINTENANCE') {
+    return (
+      <tr className="bg-amber-950/20 hover:bg-amber-950/30 border-b border-amber-500/30 text-amber-200 transition-colors">
+        <td className="py-3 px-3 whitespace-nowrap text-amber-800 font-bold">{task.date || '-'}</td>
+        <td className="py-3 px-2 whitespace-nowrap text-amber-800/80">{task.day_name || '-'}</td>
+        <td className="py-3 px-2 whitespace-nowrap">
+          <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-500/30 text-amber-800 border border-amber-500/50">
+            {task.shift_key === 'SHIFT_A' ? 'Shift A' : (task.shift_key === 'SHIFT_B' ? 'Shift B' : 'Shift C')}
+          </span>
+        </td>
+        <td className="py-3 px-2 whitespace-nowrap font-bold text-amber-800">{task.start_time_str}</td>
+        <td className="py-3 px-2 whitespace-nowrap text-amber-200">{task.end_time_str}</td>
+        <td className="py-3 px-3 whitespace-nowrap font-semibold text-slate-900">{task.machine_name}</td>
+        <td colSpan="5" className="py-3 px-3">
+          <div className="flex items-center gap-2">
+            <span className="p-1 rounded bg-amber-500/30 text-amber-800 shrink-0">
+              <i data-lucide="wrench" className="w-3.5 h-3.5"></i>
+            </span>
+            <div>
+              <div className="font-bold text-slate-900 text-xs">{task.title}</div>
+              {task.notes && <div className="text-[10px] text-amber-800/80 italic">{task.notes}</div>}
+            </div>
+          </div>
+        </td>
+        <td className="py-3 px-2 text-center whitespace-nowrap text-amber-700 font-mono text-[11px]">-</td>
+        <td className="py-3 px-3 whitespace-nowrap text-[11px] text-amber-800">Engineering Team</td>
+        <td className="py-3 px-2 text-center whitespace-nowrap">
+          <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/30 text-amber-800 border border-amber-500/50 uppercase">
+            MAINTENANCE
+          </span>
+        </td>
+        <td className="py-3 px-3 text-center whitespace-nowrap">
+          <span className="text-[10px] text-amber-700 font-bold">
+            {task.duration_hours}h duration
+          </span>
+        </td>
+      </tr>
+    );
+  }
+
+  // Production Job Row
+  return (
+    <tr className="hover:bg-blue-50/40 transition-colors border-b border-slate-200 group">
+      {/* Date */}
+      <td className="py-3 px-3 whitespace-nowrap text-slate-900 font-medium">
+        {task.date ? task.date : '-'}
+      </td>
+
+      {/* Day */}
+      <td className="py-3 px-2 whitespace-nowrap text-slate-400">
+        {task.day_name ? task.day_name.substring(0, 3) : '-'}
+      </td>
+
+      {/* Shift */}
+      <td className="py-3 px-2 whitespace-nowrap">
+        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+          task.shift_key === 'SHIFT_A' || task.shift === 'SHIFT_A' ? 'bg-cyan-500/20 text-blue-700 border border-cyan-500/40' :
+          task.shift_key === 'SHIFT_B' || task.shift === 'SHIFT_B' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' :
+          'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+        }`}>
+          {task.shift_key === 'SHIFT_A' || task.shift === 'SHIFT_A' ? 'Shift A' :
+           task.shift_key === 'SHIFT_B' || task.shift === 'SHIFT_B' ? 'Shift B' : 'Shift C'}
+        </span>
+      </td>
+
+      {/* Start Time */}
+      <td className="py-3 px-2 whitespace-nowrap font-bold text-blue-700">
+        {task.start_time_str}
+      </td>
+
+      {/* End Time */}
+      <td className="py-3 px-2 whitespace-nowrap text-slate-600">
+        {task.end_time_str}
+      </td>
+
+      {/* Machine */}
+      <td className="py-3 px-3 whitespace-nowrap">
+        <span className="px-2 py-1 rounded bg-white border border-slate-300/80 text-slate-900 font-semibold text-[11px]">
+          {task.machine_name}
+        </span>
+      </td>
+
+      {/* Order ID */}
+      <td className="py-3 px-3 whitespace-nowrap">
+        <button
+          onClick={onSelectOrder}
+          className="font-mono text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+          title="Open Order Details"
+        >
+          <span>{task.order_number}</span>
+          <i data-lucide="external-link" className="w-3 h-3 opacity-60"></i>
+        </button>
+      </td>
+
+      {/* Customer */}
+      <td className="py-3 px-3 whitespace-nowrap text-slate-600 font-medium">
+        <span className="truncate block max-w-[130px]" title={task.customer_name}>
+          {task.customer_name}
+        </span>
+      </td>
+
+      {/* Fabric / Product */}
+      <td className="py-3 px-3 whitespace-nowrap text-slate-600">
+        <span className="truncate block max-w-[140px]" title={task.cloth_type}>
+          {task.cloth_type}
+        </span>
+      </td>
+
+      {/* Quantity (kg) */}
+      <td className="py-3 px-2 whitespace-nowrap text-right font-bold text-slate-900">
+        {task.quantity_kg ? `${task.quantity_kg.toLocaleString()} kg` : '-'}
+      </td>
+
+      {/* Colour */}
+      <td className="py-3 px-3 whitespace-nowrap">
+        <div className="flex items-center gap-1.5">
+          <span
+            className="w-3.5 h-3.5 rounded-full border border-white/40 shrink-0 shadow-sm"
+            style={{ backgroundColor: COLOUR_HEX_MAP[task.colour_code] || '#38bdf8' }}
+          ></span>
+          <span className="truncate max-w-[110px] text-slate-700" title={task.colour_name}>
+            {task.colour_name}
+          </span>
+        </div>
+      </td>
+
+      {/* Setup / Changeover */}
+      <td className="py-3 px-2 whitespace-nowrap text-center">
+        {task.changeover_min > 0 ? (
+          <span
+            className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-800 border border-amber-500/40 inline-flex items-center gap-1"
+            title={`${task.cleaning_min || 0}m wash & setup`}
+          >
+            <i data-lucide="sparkles" className="w-2.5 h-2.5"></i>
+            <span>{task.changeover_min}m</span>
+          </span>
+        ) : (
+          <span className="text-[10px] text-slate-500">0 min</span>
+        )}
+      </td>
+
+      {/* Operator */}
+      <td className="py-3 px-3 whitespace-nowrap text-slate-600">
+        <span className="truncate max-w-[110px] block" title={task.operator_name}>
+          {task.operator_name || "Rajesh Kumar"}
+        </span>
+      </td>
+
+      {/* Status */}
+      <td className="py-3 px-2 whitespace-nowrap text-center">
+        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+          task.status === 'IN_PROGRESS' ? 'bg-amber-500/20 text-amber-800 border border-amber-500/40 animate-pulse' :
+          task.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40' :
+          'bg-cyan-500/20 text-blue-700 border border-cyan-500/40'
+        }`}>
+          {task.status}
+        </span>
+      </td>
+
+      {/* Actions */}
+      <td className="py-3 px-3 whitespace-nowrap text-center">
+        <div className="flex items-center justify-center gap-1">
+          {/* 1. Edit Button */}
+          <button
+            onClick={onEdit}
+            className="p-1.5 rounded-lg bg-slate-100 hover:bg-cyan-600 text-slate-700 hover:text-slate-900 border border-slate-300 transition-all cursor-pointer"
+            title="Edit scheduled job parameters"
+          >
+            <i data-lucide="edit-3" className="w-3.5 h-3.5"></i>
+          </button>
+
+          {/* 2. Lock / Unlock Toggle */}
+          <button
+            onClick={onToggleLock}
+            disabled={isLocking}
+            className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+              task.is_locked
+                ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
+                : 'bg-slate-800 border-slate-300 text-slate-400 hover:text-emerald-700 hover:border-emerald-500/50'
+            }`}
+            title={task.is_locked ? "Job is LOCKED. Click to unlock." : "Job is FLEXIBLE. Click to lock."}
+          >
+            <i data-lucide={task.is_locked ? "lock" : "unlock"} className={`w-3.5 h-3.5 ${isLocking ? 'animate-spin' : ''}`}></i>
+          </button>
+
+          {/* 3. Details Button */}
+          <button
+            onClick={onSelectOrder}
+            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-700 text-slate-700 hover:text-slate-900 border border-slate-300 transition-all cursor-pointer"
+            title="View Order Details"
+          >
+            <i data-lucide="eye" className="w-3.5 h-3.5 text-blue-600"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -2404,11 +4059,11 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
   return (
     <div className="space-y-6">
       {/* Fleet Overview Header */}
-      <div className="glass-panel p-5 border border-factory-border/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="glass-panel p-5 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h2 className="text-base font-bold text-white tracking-wide">Dyeing Vessel Fleet & Maintenance Management</h2>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+            <h2 className="text-base font-bold text-slate-900 tracking-wide">Dyeing Vessel Fleet & Maintenance Management</h2>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-blue-700 border border-cyan-500/40">
               Fleet Control
             </span>
           </div>
@@ -2418,15 +4073,15 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
-            <span className="text-slate-400">Total: <strong className="text-white">{totalMachines}</strong></span>
-            <span className="text-emerald-400">Available: <strong>{available}</strong></span>
-            <span className="text-amber-400">In Maint: <strong>{inMaintenance}</strong></span>
+          <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+            <span className="text-slate-400">Total: <strong className="text-slate-900 font-bold">{totalMachines}</strong></span>
+            <span className="text-emerald-600">Available: <strong>{available}</strong></span>
+            <span className="text-amber-700">In Maint: <strong>{inMaintenance}</strong></span>
           </div>
 
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-xs transition-all shadow-md shadow-cyan-900/30"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-all shadow-md shadow-cyan-900/30"
           >
             <i data-lucide="plus-circle" className="w-4 h-4"></i>
             <span>Add New Machine</span>
@@ -2445,7 +4100,7 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
               className={`p-4 rounded-xl border flex flex-col justify-between transition-all shadow-lg ${
                 isMaint
                   ? 'bg-amber-950/20 border-amber-500/60 shadow-amber-950/30'
-                  : 'bg-[#070c18] border-factory-border/70 hover:border-slate-600'
+                  : 'bg-[#F8FAFC] border-slate-200/70 hover:border-slate-600'
               }`}
             >
               <div>
@@ -2453,8 +4108,8 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{m.code}</span>
                   {isMaint ? (
-                    <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-1">
-                      <i data-lucide="wrench" className="w-2.5 h-2.5 text-amber-400"></i>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/25 text-amber-800 border border-amber-500/50 flex items-center gap-1">
+                      <i data-lucide="wrench" className="w-2.5 h-2.5 text-amber-700"></i>
                       <span>IN MAINTENANCE ({maint?.remaining_hours || 4}h)</span>
                     </span>
                   ) : m.status === 'RUNNING' ? (
@@ -2462,37 +4117,37 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
                       RUNNING
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-700 border border-emerald-500/40 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                       <span>AVAILABLE</span>
                     </span>
                   )}
                 </div>
 
-                <h4 className="text-sm font-bold text-white">{m.name}</h4>
-                <div className="text-[11px] text-cyan-400 font-medium mt-0.5">
+                <h4 className="text-sm font-bold text-slate-900">{m.name}</h4>
+                <div className="text-[11px] text-blue-600 font-medium mt-0.5">
                   {m.machine_type.replace('_', ' ')} • Cap: <strong>{m.max_batch_kg} kg</strong> (Min: {m.min_batch_kg}kg)
                 </div>
 
                 {/* Specs List */}
-                <div className="mt-3 pt-2.5 border-t border-slate-800/80 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-slate-400">
-                  <div>Efficiency: <strong className="text-slate-200">{(m.efficiency * 100).toFixed(0)}%</strong></div>
-                  <div>Speed: <strong className="text-slate-200">{m.processing_speed}x</strong></div>
-                  <div>Power: <strong className="text-slate-300">{m.power_kw} kW</strong></div>
-                  <div>Steam: <strong className="text-slate-300">{m.steam_kg_hr} kg/h</strong></div>
+                <div className="mt-3 pt-2.5 border-t border-slate-200/80 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-slate-400">
+                  <div>Efficiency: <strong className="text-slate-700">{(m.efficiency * 100).toFixed(0)}%</strong></div>
+                  <div>Speed: <strong className="text-slate-700">{m.processing_speed}x</strong></div>
+                  <div>Power: <strong className="text-slate-600">{m.power_kw} kW</strong></div>
+                  <div>Steam: <strong className="text-slate-600">{m.steam_kg_hr} kg/h</strong></div>
                   <div className="col-span-2 truncate">
-                    Fabrics: <span className="text-slate-300">{m.compatible_cloth_types || 'All Fabrics'}</span>
+                    Fabrics: <span className="text-slate-600">{m.compatible_cloth_types || 'All Fabrics'}</span>
                   </div>
                 </div>
 
                 {/* Maintenance Detail if active */}
                 {isMaint && maint && (
-                  <div className="mt-3 p-2.5 rounded-lg bg-amber-950/40 border border-amber-500/40 text-[11px] text-amber-200">
-                    <div className="font-bold flex items-center gap-1 text-amber-300">
+                  <div className="mt-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 border border-amber-500/40 text-[11px] text-amber-200">
+                    <div className="font-bold flex items-center gap-1 text-amber-800">
                       <i data-lucide="alert-circle" className="w-3 h-3"></i>
                       <span>{maint.title}</span>
                     </div>
-                    <div className="text-[10px] text-amber-300/80 mt-0.5">
+                    <div className="text-[10px] text-amber-800/80 mt-0.5">
                       Ends: {new Date(maint.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({maint.remaining_hours} hrs left)
                     </div>
                   </div>
@@ -2500,7 +4155,7 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
               </div>
 
               {/* Action Buttons Footer */}
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+              <div className="mt-4 pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
                 {isMaint ? (
                   <button
                     onClick={() => handleCompleteMaintenance(m.id)}
@@ -2512,7 +4167,7 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
                 ) : (
                   <button
                     onClick={() => setMaintainingMachine(m)}
-                    className="flex-1 py-1.5 px-2 bg-amber-600/30 hover:bg-amber-600 hover:text-white text-amber-300 border border-amber-500/40 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1"
+                    className="flex-1 py-1.5 px-2 bg-amber-600/30 hover:bg-amber-600 hover:text-white text-amber-800 border border-amber-500/40 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1"
                   >
                     <i data-lucide="wrench" className="w-3.5 h-3.5"></i>
                     <span>Maintenance</span>
@@ -2521,7 +4176,7 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
 
                 <button
                   onClick={() => setEditingMachine(m)}
-                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-all border border-slate-700"
+                  className="p-1.5 bg-slate-100 hover:bg-slate-700 text-slate-600 rounded-lg transition-all border border-slate-300"
                   title="Edit Machine Specifications"
                 >
                   <i data-lucide="edit-3" className="w-3.5 h-3.5"></i>
@@ -2529,7 +4184,7 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
 
                 <button
                   onClick={() => setDeletingMachine(m)}
-                  className="p-1.5 bg-rose-950/40 hover:bg-rose-900 text-rose-300 rounded-lg transition-all border border-rose-800/50"
+                  className="p-1.5 bg-rose-50 border border-rose-200 hover:bg-rose-900 text-rose-700 rounded-lg transition-all border border-rose-800/50"
                   title="Remove Machine from Fleet"
                 >
                   <i data-lucide="trash-2" className="w-3.5 h-3.5"></i>
@@ -2541,10 +4196,10 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
       </div>
 
       {/* Multi-Dimensional Colour Changeover Heatmap & Calculator */}
-      <div className="glass-panel p-5 border border-factory-border/60 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+      <div className="glass-panel p-5 border border-slate-200 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200">
           <div>
-            <h3 className="text-sm font-bold text-white">Sequence-Dependent Changeover Matrix & Penalty Inspector</h3>
+            <h3 className="text-sm font-bold text-slate-900">Sequence-Dependent Changeover Matrix & Penalty Inspector</h3>
             <p className="text-xs text-slate-400">Shows changeover cleaning time (min), water usage (L), and caustic chemical stripping costs</p>
           </div>
 
@@ -2558,12 +4213,12 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
                   setSelectedFabric(e.target.value);
                   reloadMatrix(e.target.value, selectedMachType);
                 }}
-                className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white"
+                className="bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-900"
               >
-                <option value="Cotton">Cotton</option>
-                <option value="Polyester">Polyester</option>
-                <option value="Poly-Cotton Blend">Poly-Cotton Blend</option>
-                <option value="Rayon Viscose">Rayon Viscose</option>
+                <option value="Cotton" className="text-slate-900 bg-white">Cotton</option>
+                <option value="Polyester" className="text-slate-900 bg-white">Polyester</option>
+                <option value="Poly-Cotton Blend" className="text-slate-900 bg-white">Poly-Cotton Blend</option>
+                <option value="Rayon Viscose" className="text-slate-900 bg-white">Rayon Viscose</option>
               </select>
             </div>
 
@@ -2575,12 +4230,12 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
                   setSelectedMachType(e.target.value);
                   reloadMatrix(selectedFabric, e.target.value);
                 }}
-                className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white"
+                className="bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-900"
               >
-                <option value="JET_DYEING">Jet Dyeing</option>
-                <option value="SOFT_FLOW">Soft Flow</option>
-                <option value="JIGGER">Jigger Dyeing</option>
-                <option value="WINCH">Winch Vessel</option>
+                <option value="JET_DYEING" className="text-slate-900 bg-white">Jet Dyeing</option>
+                <option value="SOFT_FLOW" className="text-slate-900 bg-white">Soft Flow</option>
+                <option value="JIGGER" className="text-slate-900 bg-white">Jigger Dyeing</option>
+                <option value="WINCH" className="text-slate-900 bg-white">Winch Vessel</option>
               </select>
             </div>
           </div>
@@ -2588,8 +4243,8 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
 
         {/* Changeover Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-center text-xs text-slate-300">
-            <thead className="bg-slate-900/90 text-[10px] uppercase font-bold text-slate-400">
+          <table className="w-full text-center text-xs text-slate-600">
+            <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400">
               <tr>
                 <th className="py-2.5 px-3 text-left">From \ To</th>
                 {(matrixData || []).map((r, i) => (
@@ -2597,18 +4252,18 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+            <tbody className="divide-y divide-slate-200 font-mono text-[11px]">
               {(matrixData || []).map((row, i) => (
-                <tr key={i} className="hover:bg-slate-800/30">
-                  <td className="py-2.5 px-3 text-left font-bold font-sans text-slate-200">{row.from_colour}</td>
+                <tr key={i} className="hover:bg-blue-50/40">
+                  <td className="py-2.5 px-3 text-left font-bold font-sans text-slate-700">{row.from_colour}</td>
                   {Object.entries(row.transitions || {}).map(([toCol, data], j) => {
                     const dur = data.changeover_min;
                     const isSevere = dur > 45;
                     const isMinimal = dur <= 10;
                     return (
                       <td key={j} className={`py-2 px-3 ${
-                        isSevere ? 'bg-rose-950/40 text-rose-300 font-bold' :
-                        isMinimal ? 'bg-emerald-950/30 text-emerald-300' : 'text-slate-300'
+                        isSevere ? 'bg-rose-50 text-rose-800 border border-rose-200 font-bold' :
+                        isMinimal ? 'bg-emerald-950/30 text-emerald-700' : 'text-slate-600'
                       }`}>
                         <div>{dur}m</div>
                         <div className="text-[9px] text-slate-500 font-sans">{data.water_litres}L</div>
@@ -2622,10 +4277,10 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
         </div>
 
         {/* Ad-Hoc Changeover Transition Calculator Sandbox */}
-        <div className="mt-4 p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+        <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-white flex items-center gap-1.5">
-              <i data-lucide="sparkles" className="w-3.5 h-3.5 text-cyan-400"></i>
+            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <i data-lucide="sparkles" className="w-3.5 h-3.5 text-blue-600"></i>
               <span>Ad-Hoc Changeover Transition Impact Calculator</span>
             </span>
             <span className="text-[11px] text-slate-400">Test penalty between any two consecutive dye shades</span>
@@ -2633,27 +4288,27 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
             <div>
-              <label className="text-[10px] text-slate-400 block mb-1">Preceding Colour (From)</label>
+              <label className="text-[10px] text-slate-700 block mb-1">Preceding Colour (From)</label>
               <select
                 value={testFromColour}
                 onChange={e => setTestFromColour(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900"
               >
                 {['WHITE', 'SKY_BLUE', 'GOLDEN_YELLOW', 'ROYAL_BLUE', 'SCARLET_RED', 'DEEP_NAVY', 'JET_BLACK'].map(c => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c} className="text-slate-900 bg-white">{c}</option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="text-[10px] text-slate-400 block mb-1">Succeeding Colour (To)</label>
+              <label className="text-[10px] text-slate-700 block mb-1">Succeeding Colour (To)</label>
               <select
                 value={testToColour}
                 onChange={e => setTestToColour(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900"
               >
                 {['WHITE', 'SKY_BLUE', 'GOLDEN_YELLOW', 'ROYAL_BLUE', 'SCARLET_RED', 'DEEP_NAVY', 'JET_BLACK'].map(c => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c} className="text-slate-900 bg-white">{c}</option>
                 ))}
               </select>
             </div>
@@ -2668,9 +4323,9 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
             </button>
 
             {testResult && (
-              <div className="p-2 rounded bg-[#070c18] border border-cyan-500/40 text-[11px] space-y-0.5 text-slate-300">
-                <div>Time: <strong className="text-cyan-300">{testResult.changeover_min} min</strong> ({testResult.cleaning_min}m wash)</div>
-                <div>Water: <strong className="text-slate-200">{testResult.water_litres} L</strong> • Cost: <strong className="text-emerald-400">₹{testResult.chemical_cost_inr}</strong></div>
+              <div className="p-2 rounded bg-[#F8FAFC] border border-cyan-500/40 text-[11px] space-y-0.5 text-slate-600">
+                <div>Time: <strong className="text-blue-700">{testResult.changeover_min} min</strong> ({testResult.cleaning_min}m wash)</div>
+                <div>Water: <strong className="text-slate-700">{testResult.water_litres} L</strong> • Cost: <strong className="text-emerald-600">₹{testResult.chemical_cost_inr}</strong></div>
               </div>
             )}
           </div>
@@ -2773,141 +4428,141 @@ function AddMachineModal({ onClose, onSuccess, showToast }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="glass-panel p-6 max-w-lg w-full border border-factory-border/80 space-y-4 shadow-2xl">
-        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <i data-lucide="plus-circle" className="w-4 h-4 text-cyan-400"></i>
+      <div className="glass-panel p-6 max-w-lg w-full border border-slate-200/80 space-y-4 shadow-2xl">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <i data-lucide="plus-circle" className="w-4 h-4 text-blue-600"></i>
             <span>Add New Dyeing Machine</span>
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">✕</button>
+          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 text-xs">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-slate-400 block mb-1">Machine Name *</label>
+              <label className="text-slate-700 block mb-1">Machine Name *</label>
               <input
                 type="text"
                 required
                 value={form.name}
                 onChange={e => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. Jet Dyeing Machine M7"
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
             <div>
-              <label className="text-slate-400 block mb-1">Machine Code (Optional)</label>
+              <label className="text-slate-700 block mb-1">Machine Code (Optional)</label>
               <input
                 type="text"
                 value={form.code}
                 onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })}
                 placeholder="Auto-generated if blank"
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-slate-400 block mb-1">Machine Type</label>
+              <label className="text-slate-700 block mb-1">Machine Type</label>
               <select
                 value={form.machine_type}
                 onChange={e => setForm({ ...form, machine_type: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               >
-                <option value="JET_DYEING">Jet Dyeing Machine</option>
-                <option value="SOFT_FLOW">Soft Flow Vessel</option>
-                <option value="JIGGER">Jigger Dyeing Machine</option>
-                <option value="WINCH">Winch Dyeing Vessel</option>
+                <option value="JET_DYEING" className="text-slate-900 bg-white">Jet Dyeing Machine</option>
+                <option value="SOFT_FLOW" className="text-slate-900 bg-white">Soft Flow Vessel</option>
+                <option value="JIGGER" className="text-slate-900 bg-white">Jigger Dyeing Machine</option>
+                <option value="WINCH" className="text-slate-900 bg-white">Winch Dyeing Vessel</option>
               </select>
             </div>
             <div>
-              <label className="text-slate-400 block mb-1">Max Batch Capacity (kg) *</label>
+              <label className="text-slate-700 block mb-1">Max Batch Capacity (kg) *</label>
               <input
                 type="number"
                 required
                 value={form.max_batch_kg}
                 onChange={e => setForm({ ...form, max_batch_kg: parseFloat(e.target.value) || 0, capacity_kg: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-slate-400 block mb-1">Min Batch (kg)</label>
+              <label className="text-slate-700 block mb-1">Min Batch (kg)</label>
               <input
                 type="number"
                 value={form.min_batch_kg}
                 onChange={e => setForm({ ...form, min_batch_kg: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
             <div>
-              <label className="text-slate-400 block mb-1">Efficiency (0.8-1.0)</label>
+              <label className="text-slate-700 block mb-1">Efficiency (0.8-1.0)</label>
               <input
                 type="number"
                 step="0.01"
                 value={form.efficiency}
                 onChange={e => setForm({ ...form, efficiency: parseFloat(e.target.value) || 0.9 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
             <div>
-              <label className="text-slate-400 block mb-1">Speed Factor</label>
+              <label className="text-slate-700 block mb-1">Speed Factor</label>
               <input
                 type="number"
                 step="0.05"
                 value={form.processing_speed}
                 onChange={e => setForm({ ...form, processing_speed: parseFloat(e.target.value) || 1.0 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-slate-400 block mb-1">Power (kW)</label>
+              <label className="text-slate-700 block mb-1">Power (kW)</label>
               <input
                 type="number"
                 value={form.power_kw}
                 onChange={e => setForm({ ...form, power_kw: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
             <div>
-              <label className="text-slate-400 block mb-1">Water (m³/h)</label>
+              <label className="text-slate-700 block mb-1">Water (m³/h)</label>
               <input
                 type="number"
                 step="0.1"
                 value={form.water_m3_hr}
                 onChange={e => setForm({ ...form, water_m3_hr: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
             <div>
-              <label className="text-slate-400 block mb-1">Steam (kg/h)</label>
+              <label className="text-slate-700 block mb-1">Steam (kg/h)</label>
               <input
                 type="number"
                 value={form.steam_kg_hr}
                 onChange={e => setForm({ ...form, steam_kg_hr: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-slate-400 block mb-1">Compatible Fabrics (comma-separated)</label>
+            <label className="text-slate-700 block mb-1">Compatible Fabrics (comma-separated)</label>
             <input
               type="text"
               value={form.compatible_cloth_types}
               onChange={e => setForm({ ...form, compatible_cloth_types: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-300 text-xs">
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-600 text-xs">
               Cancel
             </button>
             <button
@@ -2963,84 +4618,84 @@ function EditMachineModal({ machine, onClose, onSuccess, showToast }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="glass-panel p-6 max-w-lg w-full border border-factory-border/80 space-y-4 shadow-2xl">
-        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <i data-lucide="edit-3" className="w-4 h-4 text-cyan-400"></i>
+      <div className="glass-panel p-6 max-w-lg w-full border border-slate-200/80 space-y-4 shadow-2xl">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <i data-lucide="edit-3" className="w-4 h-4 text-blue-600"></i>
             <span>Edit Machine: {machine.code}</span>
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">✕</button>
+          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 text-xs">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
           <div>
-            <label className="text-slate-400 block mb-1">Machine Name</label>
+            <label className="text-slate-700 block mb-1">Machine Name</label>
             <input
               type="text"
               required
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-slate-400 block mb-1">Max Batch Capacity (kg)</label>
+              <label className="text-slate-700 block mb-1">Max Batch Capacity (kg)</label>
               <input
                 type="number"
                 required
                 value={form.max_batch_kg}
                 onChange={e => setForm({ ...form, max_batch_kg: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
             <div>
-              <label className="text-slate-400 block mb-1">Min Batch (kg)</label>
+              <label className="text-slate-700 block mb-1">Min Batch (kg)</label>
               <input
                 type="number"
                 value={form.min_batch_kg}
                 onChange={e => setForm({ ...form, min_batch_kg: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-slate-400 block mb-1">Efficiency (0.80 - 1.00)</label>
+              <label className="text-slate-700 block mb-1">Efficiency (0.80 - 1.00)</label>
               <input
                 type="number"
                 step="0.01"
                 value={form.efficiency}
                 onChange={e => setForm({ ...form, efficiency: parseFloat(e.target.value) || 0.9 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
             <div>
-              <label className="text-slate-400 block mb-1">Processing Speed Factor</label>
+              <label className="text-slate-700 block mb-1">Processing Speed Factor</label>
               <input
                 type="number"
                 step="0.05"
                 value={form.processing_speed}
                 onChange={e => setForm({ ...form, processing_speed: parseFloat(e.target.value) || 1.0 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-slate-400 block mb-1">Compatible Fabrics (comma-separated)</label>
+            <label className="text-slate-700 block mb-1">Compatible Fabrics (comma-separated)</label>
             <input
               type="text"
               value={form.compatible_cloth_types}
               onChange={e => setForm({ ...form, compatible_cloth_types: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-300 text-xs">
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-600 text-xs">
               Cancel
             </button>
             <button
@@ -3095,24 +4750,24 @@ function ScheduleMaintenanceModal({ machine, onClose, onSuccess, showToast }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="glass-panel p-6 max-w-md w-full border border-amber-500/50 space-y-4 shadow-2xl">
-        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-          <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2">
-            <i data-lucide="wrench" className="w-4 h-4 text-amber-400"></i>
+        <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+          <h3 className="text-sm font-bold text-amber-800 flex items-center gap-2">
+            <i data-lucide="wrench" className="w-4 h-4 text-amber-700"></i>
             <span>Set Machine Maintenance Mode</span>
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">✕</button>
+          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 text-xs">✕</button>
         </div>
 
         <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-500/30 text-xs text-amber-200">
           Target Machine: <strong>{machine.name} ({machine.code})</strong>
-          <p className="text-[10px] text-amber-300/80 mt-1">
+          <p className="text-[10px] text-amber-800/80 mt-1">
             Setting maintenance mode will reserve this vessel and <strong>automatically reschedule colliding jobs</strong> around the downtime.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
           <div>
-            <label className="text-slate-300 font-bold block mb-1">
+            <label className="text-slate-600 font-bold block mb-1">
               Maintenance Duration (How many hours?) *
             </label>
             <div className="flex items-center gap-2">
@@ -3124,48 +4779,48 @@ function ScheduleMaintenanceModal({ machine, onClose, onSuccess, showToast }) {
                 required
                 value={hours}
                 onChange={e => setHours(e.target.value)}
-                className="w-full bg-slate-900 border border-amber-500/50 rounded px-3 py-2 text-white font-mono font-bold text-sm"
+                className="w-full bg-white border border-amber-500/50 rounded px-3 py-2 text-slate-900 font-mono font-bold text-sm"
               />
               <span className="text-slate-400 text-xs">hours</span>
             </div>
           </div>
 
           <div>
-            <label className="text-slate-400 block mb-1">Maintenance Title / Reason</label>
+            <label className="text-slate-700 block mb-1">Maintenance Title / Reason</label>
             <input
               type="text"
               required
               value={title}
               onChange={e => setTitle(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
             />
           </div>
 
           <div>
-            <label className="text-slate-400 block mb-1">Maintenance Category</label>
+            <label className="text-slate-700 block mb-1">Maintenance Category</label>
             <select
               value={maintType}
               onChange={e => setMaintType(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
             >
-              <option value="PREVENTIVE">Preventive Maintenance (Routine)</option>
-              <option value="EMERGENCY">Urgent Mechanical Repair</option>
-              <option value="OVERHAUL">Deep Cleaning & Acid Boil-Out Overhaul</option>
+              <option value="PREVENTIVE" className="text-slate-900 bg-white">Preventive Maintenance (Routine)</option>
+              <option value="EMERGENCY" className="text-slate-900 bg-white">Urgent Mechanical Repair</option>
+              <option value="OVERHAUL" className="text-slate-900 bg-white">Deep Cleaning & Acid Boil-Out Overhaul</option>
             </select>
           </div>
 
           <div>
-            <label className="text-slate-400 block mb-1">Maintenance Notes & Instructions</label>
+            <label className="text-slate-700 block mb-1">Maintenance Notes & Instructions</label>
             <textarea
               rows="2"
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white"
+              className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
             ></textarea>
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-300 text-xs">
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-600 text-xs">
               Cancel
             </button>
             <button
@@ -3207,21 +4862,21 @@ function DeleteMachineModal({ machine, onClose, onSuccess, showToast }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="glass-panel p-6 max-w-md w-full border border-rose-500/50 space-y-4 shadow-2xl">
-        <div className="flex items-center gap-3 text-rose-400">
+        <div className="flex items-center gap-3 text-rose-600">
           <i data-lucide="alert-triangle" className="w-6 h-6"></i>
-          <h3 className="text-sm font-bold text-white">Remove Dyeing Machine</h3>
+          <h3 className="text-sm font-bold text-slate-900">Remove Dyeing Machine</h3>
         </div>
 
-        <p className="text-xs text-slate-300">
-          Are you sure you want to remove <strong className="text-white">{machine.name} ({machine.code})</strong> from the factory fleet?
+        <p className="text-xs text-slate-600">
+          Are you sure you want to remove <strong className="text-slate-900 font-bold">{machine.name} ({machine.code})</strong> from the factory fleet?
         </p>
 
-        <div className="p-3 rounded-lg bg-rose-950/30 border border-rose-500/30 text-[11px] text-rose-300">
+        <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-700">
           Any production orders currently scheduled on this machine will be <strong>automatically reassigned</strong> across remaining available machines by the TOC scheduler.
         </div>
 
-        <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-          <button onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-300 text-xs">
+        <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+          <button onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-slate-600 text-xs">
             Cancel
           </button>
           <button
@@ -3242,17 +4897,17 @@ function InventoryView({ materials, forecasts }) {
   return (
     <div className="space-y-6">
       {/* MRP Shortage Forecast Table */}
-      <div className="glass-panel p-5 border border-factory-border/60 space-y-4">
-        <div className="flex justify-between items-center pb-3 border-b border-slate-800">
+      <div className="glass-panel p-5 border border-slate-200 space-y-4">
+        <div className="flex justify-between items-center pb-3 border-b border-slate-200">
           <div>
-            <h3 className="text-sm font-bold text-white">Material Requirement Planning (MRP) & Inventory Forecasting</h3>
+            <h3 className="text-sm font-bold text-slate-900">Material Requirement Planning (MRP) & Inventory Forecasting</h3>
             <p className="text-xs text-slate-400">Calculates: Required = Planned Production + Safety Stock − Available Inventory</p>
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
+          <table className="w-full text-left text-xs text-slate-600">
+            <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-200">
               <tr>
                 <th className="py-3 px-4">Material</th>
                 <th className="py-3 px-4">Available Stock</th>
@@ -3263,23 +4918,23 @@ function InventoryView({ materials, forecasts }) {
                 <th className="py-3 px-4">Suggested Reorder</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-medium">
+            <tbody className="divide-y divide-slate-200 font-medium">
               {forecasts.map((f, i) => (
-                <tr key={i} className="hover:bg-slate-800/30">
-                  <td className="py-3 px-4 font-bold text-white">{f.material_name}</td>
+                <tr key={i} className="hover:bg-blue-50/40">
+                  <td className="py-3 px-4 font-bold text-slate-900">{f.material_name}</td>
                   <td className="py-3 px-4">{f.available_stock} {f.unit}</td>
                   <td className="py-3 px-4 text-slate-400">{f.safety_stock} {f.unit}</td>
-                  <td className="py-3 px-4 font-bold text-slate-200">{f.planned_requirement} {f.unit}</td>
-                  <td className="py-3 px-4 font-bold text-rose-400">{f.projected_shortage > 0 ? `${f.projected_shortage} ${f.unit}` : '0'}</td>
+                  <td className="py-3 px-4 font-bold text-slate-700">{f.planned_requirement} {f.unit}</td>
+                  <td className="py-3 px-4 font-bold text-rose-600">{f.projected_shortage > 0 ? `${f.projected_shortage} ${f.unit}` : '0'}</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      f.status === 'HEALTHY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                      'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                      f.status === 'HEALTHY' ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' :
+                      'bg-rose-500/20 text-rose-600 border border-rose-500/30'
                     }`}>
                       {f.status}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-cyan-400 font-bold">{f.suggested_reorder_qty > 0 ? `${f.suggested_reorder_qty} ${f.unit}` : 'None needed'}</td>
+                  <td className="py-3 px-4 text-blue-600 font-bold">{f.suggested_reorder_qty > 0 ? `${f.suggested_reorder_qty} ${f.unit}` : 'None needed'}</td>
                 </tr>
               ))}
             </tbody>
@@ -3318,31 +4973,31 @@ function DisruptionsView({ machines, materials, onDisruptionResolved, showToast 
     <div className="space-y-6">
       <div className="glass-panel p-6 border-l-4 border-l-rose-500 space-y-4">
         <div>
-          <h2 className="text-lg font-bold text-white">Dynamic Shop Floor Disruption Simulator</h2>
+          <h2 className="text-lg font-bold text-slate-900">Dynamic Shop Floor Disruption Simulator</h2>
           <p className="text-xs text-slate-400">Trigger unexpected equipment failures and observe real-time schedule repair & constraint migration</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
           <div>
-            <label className="text-xs text-slate-400 block mb-1">Target Machine to Fail</label>
+            <label className="text-xs text-slate-700 block mb-1">Target Machine to Fail</label>
             <select
               value={selectedMachine}
               onChange={e => setSelectedMachine(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900"
             >
               {machines.map(m => (
-                <option key={m.id} value={m.id}>{m.name} ({m.code})</option>
+                <option key={m.id} value={m.id} className="text-slate-900 bg-white">{m.name} ({m.code})</option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="text-xs text-slate-400 block mb-1">Failure Duration (Hours)</label>
+            <label className="text-xs text-slate-700 block mb-1">Failure Duration (Hours)</label>
             <input
               type="number"
               value={breakdownHours}
               onChange={e => setBreakdownHours(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900"
             />
           </div>
 
@@ -3359,23 +5014,23 @@ function DisruptionsView({ machines, materials, onDisruptionResolved, showToast 
         </div>
 
         {breakdownImpact && (
-          <div className="mt-4 p-4 rounded-xl bg-slate-900/90 border border-rose-500/40 space-y-2.5">
+          <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-rose-500/40 space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-xs text-rose-300">Rescheduling Ripple Effect Summary</span>
+              <span className="font-bold text-xs text-rose-700">Rescheduling Ripple Effect Summary</span>
               <span className="text-[10px] text-slate-400">Completed in 42ms</span>
             </div>
             <div className="grid grid-cols-3 gap-3 text-center text-xs">
-              <div className="p-2 bg-slate-800 rounded">
+              <div className="p-2 bg-slate-50 rounded border border-slate-200">
                 <div className="text-slate-400 text-[10px]">Affected Jobs</div>
-                <div className="font-bold text-white mt-0.5">{breakdownImpact.affected_count}</div>
+                <div className="font-bold text-slate-900 mt-0.5">{breakdownImpact.affected_count}</div>
               </div>
-              <div className="p-2 bg-slate-800 rounded">
+              <div className="p-2 bg-slate-50 rounded border border-slate-200">
                 <div className="text-slate-400 text-[10px]">Rerouted Alternate</div>
-                <div className="font-bold text-emerald-400 mt-0.5">{breakdownImpact.reassigned_orders.length}</div>
+                <div className="font-bold text-emerald-600 mt-0.5">{breakdownImpact.reassigned_orders.length}</div>
               </div>
-              <div className="p-2 bg-slate-800 rounded">
+              <div className="p-2 bg-slate-50 rounded border border-slate-200">
                 <div className="text-slate-400 text-[10px]">Late Delivery Risk</div>
-                <div className="font-bold text-rose-400 mt-0.5">{breakdownImpact.delayed_orders.length}</div>
+                <div className="font-bold text-rose-600 mt-0.5">{breakdownImpact.delayed_orders.length}</div>
               </div>
             </div>
           </div>
@@ -3413,7 +5068,7 @@ function WhatIfView({ machines, materials, showToast }) {
     <div className="space-y-6">
       <div className="glass-panel p-6 border-l-4 border-l-purple-500 space-y-4">
         <div>
-          <h2 className="text-lg font-bold text-white">What-If Strategic Scenario Sandbox</h2>
+          <h2 className="text-lg font-bold text-slate-900">What-If Strategic Scenario Sandbox</h2>
           <p className="text-xs text-slate-400">Run isolated simulations to explore capacity changes without altering live factory production</p>
         </div>
 
@@ -3421,13 +5076,13 @@ function WhatIfView({ machines, materials, showToast }) {
           <select
             value={scenarioType}
             onChange={e => setScenarioType(e.target.value)}
-            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white flex-1"
+            className="bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 flex-1"
           >
-            <option value="ADD_SHIFT">What if we authorize a 3rd night shift (22:00–06:00)?</option>
-            <option value="BREAKDOWN">What if Jet Dyeing M2 fails for 48 hours?</option>
-            <option value="MATERIAL_DELAY">What if critical Reactive Blue dye arrives 3 days late?</option>
-            <option value="RUSH_ORDER">What if a VIP Emergency Order (1,200 kg Navy) arrives today?</option>
-            <option value="TIME_INFLATION">What if boiler steam drops, expanding dye times by +15%?</option>
+            <option value="ADD_SHIFT" className="text-slate-900 bg-white">What if we authorize a 3rd night shift (22:00–06:00)?</option>
+            <option value="BREAKDOWN" className="text-slate-900 bg-white">What if Jet Dyeing M2 fails for 48 hours?</option>
+            <option value="MATERIAL_DELAY" className="text-slate-900 bg-white">What if critical Reactive Blue dye arrives 3 days late?</option>
+            <option value="RUSH_ORDER" className="text-slate-900 bg-white">What if a VIP Emergency Order (1,200 kg Navy) arrives today?</option>
+            <option value="TIME_INFLATION" className="text-slate-900 bg-white">What if boiler steam drops, expanding dye times by +15%?</option>
           </select>
 
           <button
@@ -3440,25 +5095,25 @@ function WhatIfView({ machines, materials, showToast }) {
         </div>
 
         {result && (
-          <div className="mt-6 p-5 rounded-xl bg-slate-900/90 border border-purple-500/40 space-y-4">
+          <div className="mt-6 p-5 rounded-xl bg-slate-50 border border-purple-500/40 space-y-4">
             <h3 className="font-bold text-sm text-purple-300">{result.scenario_name}</h3>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <div className="p-3 bg-slate-800 rounded-lg">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="text-[10px] text-slate-400 uppercase">On-Time Delivery Diff</div>
-                <div className="text-lg font-black text-white mt-1">
-                  {result.baseline_on_time_pct}% → <span className={result.simulated_on_time_pct >= result.baseline_on_time_pct ? 'text-emerald-400' : 'text-rose-400'}>{result.simulated_on_time_pct}%</span>
+                <div className="text-lg font-black text-slate-900 mt-1">
+                  {result.baseline_on_time_pct}% → <span className={result.simulated_on_time_pct >= result.baseline_on_time_pct ? 'text-emerald-600' : 'text-rose-600'}>{result.simulated_on_time_pct}%</span>
                 </div>
               </div>
-              <div className="p-3 bg-slate-800 rounded-lg">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="text-[10px] text-slate-400 uppercase">Cost Impact</div>
-                <div className="text-lg font-black text-amber-400 mt-1">+₹{result.cost_difference_inr.toLocaleString()}</div>
+                <div className="text-lg font-black text-amber-700 mt-1">+₹{result.cost_difference_inr.toLocaleString()}</div>
               </div>
-              <div className="p-3 bg-slate-800 rounded-lg">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="text-[10px] text-slate-400 uppercase">Delayed Orders</div>
-                <div className="text-lg font-black text-slate-200 mt-1">{result.delayed_orders_count}</div>
+                <div className="text-lg font-black text-slate-700 mt-1">{result.delayed_orders_count}</div>
               </div>
-              <div className="p-3 bg-slate-800 rounded-lg">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="text-[10px] text-slate-400 uppercase">Bottleneck Migration</div>
                 <div className="text-xs font-bold text-purple-300 mt-1 truncate">{result.simulated_bottleneck}</div>
               </div>
@@ -3469,73 +5124,6 @@ function WhatIfView({ machines, materials, showToast }) {
             </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-// 9. SCHEDULE QUALITY SCORECARD COMPONENT
-function ScorecardView({ qualityScore, dashboard }) {
-  if (!qualityScore) return null;
-  const sub = qualityScore.sub_scores;
-
-  return (
-    <div className="space-y-6">
-      <div className="glass-panel p-6 border border-factory-border/60 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
-          <div>
-            <h2 className="text-xl font-black text-white tracking-wide">Schedule Quality Scorecard (0–100)</h2>
-            <p className="text-xs text-slate-400">Strict hierarchical multi-objective evaluation based on Theory of Constraints</p>
-          </div>
-
-          <div className="flex items-center gap-4 bg-slate-900 px-5 py-3 rounded-xl border border-slate-800">
-            <div className="text-3xl font-black text-cyan-400">{qualityScore.overall_score}</div>
-            <div>
-              <div className="text-[10px] uppercase font-bold text-slate-400">Overall Grade</div>
-              <div className="text-xs font-bold text-emerald-400">{qualityScore.grade}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 7-Tier Strict Hierarchy Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: 'Priority 1 & 2: On-Time Delivery', score: sub.on_time_delivery, max: 35.0, color: 'bg-emerald-500' },
-            { label: 'Priority 3: Bottleneck Protection', score: sub.bottleneck_utilization, max: 20.0, color: 'bg-amber-500' },
-            { label: 'Priority 4: Material Feasibility', score: sub.material_feasibility, max: 10.0, color: 'bg-cyan-500' },
-            { label: 'Priority 4: Manpower Feasibility', score: sub.manpower_feasibility, max: 5.0, color: 'bg-blue-500' },
-            { label: 'Priority 5: Changeover Efficiency', score: sub.changeover_efficiency, max: 10.0, color: 'bg-purple-500' },
-            { label: 'Priority 6: Machine Utilization', score: sub.machine_utilization, max: 10.0, color: 'bg-indigo-500' },
-            { label: 'Priority 7: Buffers & Stability', score: sub.buffer_and_stability, max: 10.0, color: 'bg-emerald-400' },
-          ].map((item, i) => (
-            <div key={i} className="p-3 bg-slate-900/60 rounded-lg border border-slate-800 space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-400">{item.label}</span>
-                <span className="font-bold text-white">{item.score} / {item.max}</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div className={`h-full ${item.color}`} style={{ width: `${(item.score / item.max) * 100}%` }}></div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Explanations & Corrective Recommendations */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-800">
-          <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-2">
-            <h4 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Score Diagnostic Notes</h4>
-            {qualityScore.score_explanations.map((exp, i) => (
-              <p key={i} className="text-xs text-slate-300">• {exp}</p>
-            ))}
-          </div>
-
-          <div className="p-4 bg-cyan-950/20 rounded-xl border border-cyan-500/30 space-y-2">
-            <h4 className="text-xs font-bold uppercase text-cyan-400 tracking-wider">Actions to Reach 100%</h4>
-            {qualityScore.recommendations_to_reach_100.map((rec, i) => (
-              <p key={i} className="text-xs text-cyan-200">→ {rec}</p>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

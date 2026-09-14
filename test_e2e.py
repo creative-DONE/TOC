@@ -200,6 +200,27 @@ def test_all_endpoints():
     assert co_detail["changeover_min"] > 30.0
     print(f"  [PASS] GET /api/schedule/changeover-matrix & /changeover-calculate (Dark-to-Light penalty: {co_detail['changeover_min']}m)")
 
+    # 21. Test Schedule Slot Toggle Lock
+    fresh_slots = client.get("/api/schedule/slots?tier=WEEKLY").json()
+    first_slot_id = fresh_slots[0]["id"]
+    res_lock = client.post(f"/api/schedule/slots/{first_slot_id}/toggle-lock")
+    assert res_lock.status_code == 200
+    assert res_lock.json()["success"] is True
+    print(f"  [PASS] POST /api/schedule/slots/{first_slot_id}/toggle-lock (Lock state toggled)")
+
+    # 22. Test Schedule Slot Update & Reorganization
+    res_reorg = client.post(f"/api/schedule/slots/{first_slot_id}/update-and-reorganize", json={
+        "quantity_kg": 350.0,
+        "colour_name": "Optical Bleached White",
+        "colour_code": "WHITE",
+        "force_unlock_conflicts": True
+    })
+    assert res_reorg.status_code == 200
+    reorg_data = res_reorg.json()
+    assert reorg_data["success"] is True
+    assert "diff" in reorg_data
+    print(f"  [PASS] POST /api/schedule/slots/{first_slot_id}/update-and-reorganize (Schedule dynamically re-optimized)")
+
     print("================================================================")
     print("  ALL END-TO-END HTTP INTEGRATION TESTS PASSED!                 ")
     print("================================================================")

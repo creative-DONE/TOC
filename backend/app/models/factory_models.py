@@ -58,10 +58,10 @@ class Machine(Base):
     current_workload_kg = Column(Float, default=0.0)
     
     # Relationships
-    maintenance_records = relationship("MachineMaintenance", back_populates="machine")
-    reliability = relationship("MachineReliability", back_populates="machine", uselist=False)
-    schedules = relationship("ProductionSchedule", back_populates="machine")
-    skills = relationship("EmployeeSkill", back_populates="machine")
+    maintenance_records = relationship("MachineMaintenance", back_populates="machine", cascade="all, delete-orphan")
+    reliability = relationship("MachineReliability", back_populates="machine", uselist=False, cascade="all, delete-orphan")
+    schedules = relationship("ProductionSchedule", back_populates="machine", cascade="all, delete-orphan")
+    skills = relationship("EmployeeSkill", back_populates="machine", cascade="all, delete-orphan")
 
 class MachineMaintenance(Base):
     __tablename__ = "machine_maintenance"

@@ -269,6 +269,40 @@ class QualityScoreResponse(BaseModel):
     score_explanations: List[str]
     recommendations_to_reach_100: List[str]
 
+# Schedule Slot Update & Reorganization Schema
+class ScheduleSlotUpdateRequest(BaseModel):
+    machine_id: Optional[int] = None
+    planned_start: Optional[datetime] = None
+    planned_end: Optional[datetime] = None
+    quantity_kg: Optional[float] = None
+    cloth_type: Optional[str] = None
+    colour_name: Optional[str] = None
+    colour_code: Optional[str] = None
+    changeover_min: Optional[float] = None
+    operator_id: Optional[int] = None
+    status: Optional[str] = None
+    shift: Optional[str] = None
+    force_override: bool = False
+    force_unlock_conflicts: bool = False
+
+# Production Planning Matrix Edit Schema
+class MatrixEditRequest(BaseModel):
+    action: str # ASSIGN, MOVE, REMOVE, UPDATE_ROW, ADD_ORDER, DELETE_ORDER, TOGGLE_LOCK
+    order_id: Optional[int] = None
+    machine_id: Optional[int] = None
+    target_machine_id: Optional[int] = None
+    order_number: Optional[str] = None
+    customer_name: Optional[str] = None
+    cloth_type: Optional[str] = None
+    quantity_kg: Optional[float] = None
+    colour_name: Optional[str] = None
+    colour_code: Optional[str] = None
+    planned_day: Optional[int] = None
+    due_date: Optional[datetime] = None
+    priority: Optional[str] = "MEDIUM"
+    force_override: bool = False
+    force_unlock_conflicts: bool = False
+
 # KPI Dashboard Overview
 class DashboardOverviewResponse(BaseModel):
     total_orders: int

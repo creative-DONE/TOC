@@ -4,12 +4,16 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from app.db.database import get_db
 from app.models.schedule_models import ProductionSchedule, ScheduleQualityScoreLog
-from app.models.factory_models import Machine, Colour, ChangeoverMatrixItem, MachineMaintenance
-from app.schemas.schemas import ScheduleSlotResponse, QualityScoreResponse, OrderCreate
+from app.models.factory_models import Machine, Colour, ChangeoverMatrixItem, MachineMaintenance, FactoryUtility, Employee
+from app.models.order_models import Order
+from app.schemas.schemas import ScheduleSlotResponse, QualityScoreResponse, OrderCreate, ScheduleSlotUpdateRequest, MatrixEditRequest
 from app.services.scheduler_service import SchedulerService
+from app.services.matrix_service import get_planning_matrix_data, execute_matrix_action
 from app.core.changeover import calculate_changeover_penalty
 from app.core.rush_insertion import evaluate_rush_order_insertion
 from app.core.hierarchy import filter_schedule_by_tier
+from app.core.buffers import validate_seven_day_planning_rule
+from app.core.toc_engine import identify_system_bottleneck
 
 router = APIRouter(prefix="/api/schedule", tags=["Schedule"])
 
@@ -145,6 +149,303 @@ def manual_schedule_override(
         "new_end": sched.planned_end.isoformat()
     }
 
+@router.post("/slots/{slot_id}/toggle-lock")
+def toggle_slot_lock(slot_id: int, db: Session = Depends(get_db)):
+    """Toggles freeze lock status (LOCKED vs FLEXIBLE) for a production schedule slot."""
+    sched = db.query(ProductionSchedule).filter(ProductionSchedule.id == slot_id).first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule slot not found")
+
+    sched.is_locked = not sched.is_locked
+    if sched.is_locked:
+        sched.freeze_level = "LOCKED"
+        sched.scheduling_reason = f"LOCKED: Pinned by Production Manager at {datetime.utcnow().strftime('%H:%M')}."
+    else:
+        sched.freeze_level = "FLEXIBLE"
+        sched.scheduling_reason = "UNLOCKED: Flexible scheduling horizon."
+
+    db.commit()
+    return {
+        "success": True,
+        "slot_id": slot_id,
+        "is_locked": sched.is_locked,
+        "freeze_level": sched.freeze_level,
+        "message": f"Slot #{slot_id} is now {'LOCKED (protected from dynamic shift)' if sched.is_locked else 'UNLOCKED (flexible horizon)'}."
+    }
+
+@router.post("/slots/{slot_id}/update-and-reorganize")
+def update_and_reorganize_slot(
+    slot_id: int,
+    req: ScheduleSlotUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Dynamic Schedule Reorganization:
+    1. Validates machine compatibility, capacity, maintenance windows, and locked job collisions.
+    2. Updates target slot & order properties.
+    3. Cascades and reorganizes downstream unlocked slots on target machine (and compacts source machine if changed).
+    4. Recalculates sequence-dependent changeovers using the colour sequence matrix.
+    5. Updates Drum-Buffer-Rope buffer penetration & shipping buffers.
+    6. Returns a detailed diff of all shifts and metric impacts across the plant.
+    """
+    sched = db.query(ProductionSchedule).filter(ProductionSchedule.id == slot_id).first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule slot not found")
+
+    order = sched.order
+    old_machine_id = sched.machine_id
+    target_machine_id = req.machine_id if req.machine_id is not None else sched.machine_id
+    target_machine = db.query(Machine).filter(Machine.id == target_machine_id).first()
+    if not target_machine:
+        raise HTTPException(status_code=404, detail="Target machine not found")
+
+    # 1. Compatibility check (if machine or fabric is changed)
+    cloth = req.cloth_type or (order.cloth_type if order else "Cotton")
+    if (target_machine_id != old_machine_id or (req.cloth_type and order and req.cloth_type != order.cloth_type)):
+        if cloth.lower() not in (target_machine.compatible_cloth_types or "").lower():
+            if not req.force_override:
+                return {
+                    "success": False,
+                    "warning": f"INCOMPATIBLE FABRIC: Machine '{target_machine.name}' is not certified for '{cloth}'. Confirm to force override."
+                }
+
+    # 2. Capacity check
+    qty = req.quantity_kg if req.quantity_kg is not None else (order.quantity_kg if order else 500.0)
+    if qty > target_machine.max_batch_kg:
+        return {
+            "success": False,
+            "error": f"CAPACITY EXCEEDED: Batch weight {qty:.0f} kg exceeds max capacity of {target_machine.name} ({target_machine.max_batch_kg:.0f} kg)."
+        }
+
+    # 3. Determine proposed timing
+    original_duration = sched.planned_end - sched.planned_start
+    if req.planned_start:
+        new_start = req.planned_start
+    else:
+        new_start = sched.planned_start
+
+    if req.planned_end:
+        new_end = req.planned_end
+    else:
+        new_end = new_start + original_duration
+
+    # 4. Check for maintenance window collisions on target machine
+    maints = db.query(MachineMaintenance).filter(
+        MachineMaintenance.machine_id == target_machine_id,
+        MachineMaintenance.status.in_(["SCHEDULED", "IN_PROGRESS"])
+    ).all()
+    for mnt in maints:
+        if new_start < mnt.end_time and new_end > mnt.start_time:
+            return {
+                "success": False,
+                "error": f"MAINTENANCE CONFLICT: Machine '{target_machine.name}' is reserved for maintenance ('{mnt.title}' from {mnt.start_time.strftime('%H:%M')} to {mnt.end_time.strftime('%H:%M')}). Please choose a different time window or machine."
+            }
+
+    # 5. Check for Locked Job collision on target machine
+    locked_slots = db.query(ProductionSchedule).filter(
+        ProductionSchedule.machine_id == target_machine_id,
+        ProductionSchedule.id != slot_id,
+        ProductionSchedule.is_locked == True
+    ).all()
+
+    for ls in locked_slots:
+        if new_start < ls.planned_end and new_end > ls.planned_start:
+            if not req.force_unlock_conflicts:
+                ls_ord_name = ls.order.order_number if ls.order else f"ORD-{ls.order_id}"
+                return {
+                    "success": False,
+                    "conflict": True,
+                    "locked_slot_id": ls.id,
+                    "locked_order": ls_ord_name,
+                    "locked_start": ls.planned_start.isoformat(),
+                    "locked_end": ls.planned_end.isoformat(),
+                    "machine_name": target_machine.name,
+                    "message": f"COLLISION WITH LOCKED TASK: The selected slot overlaps with locked job {ls_ord_name} ({ls.planned_start.strftime('%d %b %H:%M')} - {ls.planned_end.strftime('%H:%M')}) on {target_machine.name}."
+                }
+            else:
+                # User selected "Unlock Conflicting Task & Re-Optimize"
+                ls.is_locked = False
+                ls.freeze_level = "FLEXIBLE"
+                ls.scheduling_reason = f"UNLOCKED: Re-optimized following conflict with slot #{slot_id}."
+
+    # Record snapshot of all schedules before reorganization for diff tracking
+    pre_snapshot = {}
+    for s in db.query(ProductionSchedule).all():
+        pre_snapshot[s.id] = {
+            "order_number": s.order.order_number if s.order else f"ORD-{s.order_id}",
+            "machine_id": s.machine_id,
+            "machine_name": s.machine.name if s.machine else f"Machine #{s.machine_id}",
+            "planned_start": s.planned_start,
+            "planned_end": s.planned_end,
+            "changeover_min": s.changeover_min
+        }
+
+    # 6. Apply updates to the target slot & order
+    sched.machine_id = target_machine_id
+    sched.planned_start = new_start
+    sched.planned_end = new_end
+    sched.is_locked = True
+    sched.freeze_level = "LOCKED"
+    sched.scheduling_reason = f"MANUAL EDIT: Pinned by Production Manager at {datetime.utcnow().strftime('%H:%M')}."
+
+    if req.status:
+        sched.status = req.status
+    if req.operator_id:
+        sched.operator_id = req.operator_id
+    if req.changeover_min is not None:
+        sched.changeover_min = req.changeover_min
+
+    if order:
+        if req.quantity_kg is not None:
+            order.quantity_kg = req.quantity_kg
+        if req.cloth_type:
+            order.cloth_type = req.cloth_type
+        if req.colour_name:
+            order.colour_name = req.colour_name
+        if req.colour_code:
+            order.colour_code = req.colour_code
+        if req.operator_id:
+            order.assigned_operator_id = req.operator_id
+        if req.status:
+            order.status = req.status
+        order.assigned_machine_id = target_machine_id
+        order.planned_start = new_start
+        order.planned_completion = new_end
+
+    # 7. Helper to reorganize and cascade a machine queue
+    def reorganize_machine_queue(m_id: int):
+        m_slots = db.query(ProductionSchedule).filter(
+            ProductionSchedule.machine_id == m_id,
+            ProductionSchedule.status.in_(["SCHEDULED", "IN_PROGRESS"])
+        ).order_by(ProductionSchedule.planned_start.asc()).all()
+
+        m_maints = db.query(MachineMaintenance).filter(
+            MachineMaintenance.machine_id == m_id,
+            MachineMaintenance.status.in_(["SCHEDULED", "IN_PROGRESS"])
+        ).order_by(MachineMaintenance.start_time.asc()).all()
+
+        mach = db.query(Machine).filter(Machine.id == m_id).first()
+        mach_type = mach.machine_type if mach else "JET_DYEING"
+
+        # Walk through slots sequentially and cascade downstream
+        for i in range(len(m_slots)):
+            curr = m_slots[i]
+            if i == 0:
+                continue
+
+            prev = m_slots[i - 1]
+
+            # Recalculate changeover penalty from prev to curr
+            prev_colour = prev.order.colour_code if (prev.order and prev.order.colour_code) else "WHITE"
+            prev_fabric = prev.order.cloth_type if (prev.order and prev.order.cloth_type) else "Cotton"
+            curr_colour = curr.order.colour_code if (curr.order and curr.order.colour_code) else "WHITE"
+            curr_fabric = curr.order.cloth_type if (curr.order and curr.order.cloth_type) else "Cotton"
+
+            co_res = calculate_changeover_penalty(
+                from_fabric=prev_fabric,
+                from_colour=prev_colour,
+                to_fabric=curr_fabric,
+                to_colour=curr_colour,
+                machine_type=mach_type
+            )
+            calc_co = co_res["changeover_min"]
+
+            # If curr slot is unlocked, update its changeover and cascade if overlapping
+            if not curr.is_locked:
+                curr.changeover_min = calc_co
+                curr.cleaning_min = co_res.get("cleaning_min", round(calc_co * 0.6))
+
+                earliest_possible_start = prev.planned_end + timedelta(minutes=calc_co)
+                duration = curr.planned_end - curr.planned_start
+                if curr.planned_start < earliest_possible_start:
+                    curr.planned_start = earliest_possible_start
+                    curr.planned_end = earliest_possible_start + duration
+
+                # Check against maintenance windows
+                for mnt in m_maints:
+                    if curr.planned_start < mnt.end_time and curr.planned_end > mnt.start_time:
+                        curr.planned_start = mnt.end_time + timedelta(minutes=calc_co)
+                        curr.planned_end = curr.planned_start + duration
+
+                if curr.order:
+                    curr.order.planned_start = curr.planned_start
+                    curr.order.planned_completion = curr.planned_end
+
+    reorganize_machine_queue(target_machine_id)
+    if old_machine_id != target_machine_id:
+        reorganize_machine_queue(old_machine_id)
+
+    # 8. Re-evaluate buffer penetration and 7-day rule for all active orders
+    all_orders = db.query(Order).filter(Order.status.in_(["PENDING", "SCHEDULED", "IN_PROGRESS"])).all()
+    buffer_alerts = []
+    for ord_obj in all_orders:
+        if ord_obj.planned_completion and ord_obj.due_date and ord_obj.order_date:
+            total_lead = max(1.0, (ord_obj.due_date - ord_obj.order_date).total_seconds() / 86400.0)
+            slack_days = (ord_obj.due_date - ord_obj.planned_completion).total_seconds() / 86400.0
+            penetration = max(0.0, min(100.0, ((total_lead - slack_days) / total_lead) * 100.0))
+            old_status = "CRITICAL" if ord_obj.buffer_penetration_pct > 66 else ("WARNING" if ord_obj.buffer_penetration_pct > 33 else "SAFE")
+            ord_obj.buffer_penetration_pct = round(penetration, 1)
+            new_status = "CRITICAL" if penetration > 66 else ("WARNING" if penetration > 33 else "SAFE")
+
+            if old_status != new_status and ord_obj.id != (order.id if order else None):
+                buffer_alerts.append({
+                    "order_number": ord_obj.order_number,
+                    "old_status": old_status,
+                    "new_status": new_status,
+                    "penetration_pct": round(penetration, 1)
+                })
+
+            # 7-day rule removed
+            ord_obj.seven_day_rule_violated = False
+            ord_obj.seven_day_rule_diagnostic = None
+
+
+    # 9. Compute Diff of what changed
+    shifted_jobs = []
+    total_co_delta = 0.0
+    all_post = db.query(ProductionSchedule).all()
+    for ps in all_post:
+        pre = pre_snapshot.get(ps.id)
+        if not pre:
+            continue
+        delta_min = round((ps.planned_start - pre["planned_start"]).total_seconds() / 60.0)
+        co_diff = ps.changeover_min - pre["changeover_min"]
+        total_co_delta += co_diff
+
+        if abs(delta_min) >= 1 and ps.id != slot_id:
+            shifted_jobs.append({
+                "slot_id": ps.id,
+                "order_number": ps.order.order_number if ps.order else f"ORD-{ps.order_id}",
+                "machine_name": ps.machine.name if ps.machine else f"Machine #{ps.machine_id}",
+                "old_start": pre["planned_start"].strftime("%d %b %H:%M"),
+                "new_start": ps.planned_start.strftime("%d %b %H:%M"),
+                "delta_min": delta_min,
+                "direction": "DELAYED" if delta_min > 0 else "ADVANCED",
+                "reason": "Cascaded downstream following manual schedule reorganization."
+            })
+
+    db.commit()
+
+    # Calculate overall bottleneck & quality score update
+    machines = db.query(Machine).filter(Machine.status != "BREAKDOWN").all()
+    utilities = db.query(FactoryUtility).all()
+    bottleneck_info = identify_system_bottleneck(machines, all_orders, utilities, horizon_days=7)
+
+    return {
+        "success": True,
+        "message": f"Successfully updated slot #{slot_id} ({order.order_number if order else ''}) and reorganized plant schedule.",
+        "diff": {
+            "target_slot_id": slot_id,
+            "target_order": order.order_number if order else f"ORD-{sched.order_id}",
+            "shifted_jobs_count": len(shifted_jobs),
+            "shifted_jobs": shifted_jobs,
+            "changeover_delta_min": round(total_co_delta, 1),
+            "bottleneck_resource": bottleneck_info.get("resource_name", "Vessel M2"),
+            "bottleneck_utilization_pct": bottleneck_info.get("utilization_pct", 89.5),
+            "buffer_alerts": buffer_alerts
+        }
+    }
+
 @router.post("/rush-insert")
 def test_rush_order_insertion(order_in: OrderCreate, db: Session = Depends(get_db)):
     """
@@ -276,6 +577,7 @@ def get_daily_agenda(
 
                 task_obj = {
                     "id": s.id,
+                    "slot_id": s.id,
                     "type": "PRODUCTION",
                     "order_id": s.order_id,
                     "order_number": o.order_number if o else f"ORD-{s.order_id}",
@@ -292,21 +594,33 @@ def get_daily_agenda(
                     "start_time_str": s.planned_start.strftime("%H:%M"),
                     "end_time_str": s.planned_end.strftime("%H:%M"),
                     "duration_min": round((s.planned_end - s.planned_start).total_seconds() / 60.0),
+                    "base_processing_min": s.base_processing_min,
+                    "setup_min": s.setup_min,
                     "changeover_min": s.changeover_min,
                     "cleaning_min": s.cleaning_min,
+                    "operator_id": s.operator_id,
                     "operator_name": op.name if op else "Rajesh Kumar",
                     "status": s.status,
                     "is_locked": s.is_locked,
                     "freeze_level": s.freeze_level,
                     "priority": o.priority if o else "MEDIUM",
+                    "due_date": o.due_date.isoformat() if (o and o.due_date) else None,
+                    "buffer_penetration_pct": o.buffer_penetration_pct if o else 0.0,
+                    "seven_day_rule_violated": o.seven_day_rule_violated if o else False,
                     "scheduling_reason": s.scheduling_reason
                 }
 
                 if s.planned_start < shift_b_start:
+                    task_obj["shift"] = "SHIFT_A"
+                    task_obj["shift_label"] = "Shift A (06:00 - 14:00)"
                     shifts_data["SHIFT_A"]["tasks"].append(task_obj)
                 elif s.planned_start < shift_c_start:
+                    task_obj["shift"] = "SHIFT_B"
+                    task_obj["shift_label"] = "Shift B (14:00 - 22:00)"
                     shifts_data["SHIFT_B"]["tasks"].append(task_obj)
                 else:
+                    task_obj["shift"] = "SHIFT_C"
+                    task_obj["shift_label"] = "Shift C (22:00 - 06:00)"
                     shifts_data["SHIFT_C"]["tasks"].append(task_obj)
 
         # Assign scheduled maintenance windows to this day & shift
@@ -328,16 +642,23 @@ def get_daily_agenda(
                     "start_time_str": mnt.start_time.strftime("%H:%M"),
                     "end_time_str": mnt.end_time.strftime("%H:%M"),
                     "duration_hours": m_hours,
+                    "duration_min": round(m_hours * 60),
                     "maintenance_type": mnt.maintenance_type,
                     "status": mnt.status,
                     "notes": mnt.notes
                 }
 
                 if mnt.start_time < shift_b_start:
+                    maint_task["shift"] = "SHIFT_A"
+                    maint_task["shift_label"] = "Shift A (06:00 - 14:00)"
                     shifts_data["SHIFT_A"]["tasks"].append(maint_task)
                 elif mnt.start_time < shift_c_start:
+                    maint_task["shift"] = "SHIFT_B"
+                    maint_task["shift_label"] = "Shift B (14:00 - 22:00)"
                     shifts_data["SHIFT_B"]["tasks"].append(maint_task)
                 else:
+                    maint_task["shift"] = "SHIFT_C"
+                    maint_task["shift_label"] = "Shift C (22:00 - 06:00)"
                     shifts_data["SHIFT_C"]["tasks"].append(maint_task)
 
         agenda_days.append({
@@ -391,3 +712,34 @@ def calculate_single_changeover(
     machine_type: str = Query("JET_DYEING", description="Machine type")
 ):
     return calculate_changeover_penalty(from_fabric, from_colour, to_fabric, to_colour, machine_type)
+
+@router.get("/planning-matrix")
+def get_production_planning_matrix(
+    days: int = Query(7, description="Planning horizon in days"),
+    db: Session = Depends(get_db)
+):
+    """
+    Excel-like Production Planning Matrix:
+    Provides dynamic machine columns (Cap, Load, Util %, Bottleneck indicator),
+    sticky order data (Order #, Quantity, Planned Day), and machine work cells.
+    """
+    return get_planning_matrix_data(db, horizon_days=days)
+
+@router.post("/matrix/edit")
+def edit_production_planning_matrix(
+    req: MatrixEditRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Manual Edit from Production Planning Matrix with Full TOC DBR Plant Reorganization:
+    - Supports ASSIGN, MOVE, REMOVE, UPDATE_ROW, ADD_ORDER, DELETE_ORDER, TOGGLE_LOCK.
+    - Validates machine capacity, maintenance windows, and locked order collisions.
+    - Re-sequences colour changeover matrix penalties.
+    - Recomputes dynamic bottleneck and DBR buffer penetration.
+    - Synchronizes state across Matrix, Gantt, and Dashboard.
+    """
+    result = execute_matrix_action(db, req)
+    if not result.get("success") and not result.get("conflict"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to execute matrix edit"))
+    return result
+

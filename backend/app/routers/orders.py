@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -7,7 +7,8 @@ from app.models.order_models import Order, Customer, OrderStatus, ReadinessStatu
 from app.models.factory_models import Machine, Employee
 from app.models.schedule_models import ProductionSchedule
 from app.schemas.schemas import OrderCreate, OrderResponse, OrderUpdate
-from app.services.scheduler_service import SchedulerService
+from app.services.scheduler_service import SchedulerService, optimize_factory_schedule
+from app.services.excel_import_service import import_excel_orders_to_db
 from app.core.readiness import evaluate_order_readiness
 
 router = APIRouter(prefix="/api/orders", tags=["Orders"])
@@ -106,6 +107,10 @@ def create_order(order_in: OrderCreate, db: Session = Depends(get_db)):
     scheduler = SchedulerService(db)
     scheduler.calculate_urgency_scores()
     scheduler.update_all_readiness()
+
+    # Re-optimize complete factory schedule
+    optimize_factory_schedule(db, reference_now=datetime.utcnow(), force_reschedule_all=False, preserve_locked=True)
+    db.commit()
     db.refresh(new_order)
 
     return OrderResponse(
@@ -472,3 +477,20 @@ def get_order_schedule_detail(order_id: int, db: Session = Depends(get_db)):
         "freeze_level": sched.freeze_level,
         "reasons": (order.scheduling_reason or "").split(" | ")
     }
+
+@router.post("/import-excel")
+async def import_orders_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Import production orders from an Excel file (.xlsx, .xls) with Due Date support.
+    """
+    if not file.filename.lower().endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="Only Excel files (.xlsx, .xls) are accepted.")
+    content = await file.read()
+    res = import_excel_orders_to_db(db, content)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message", "Excel import failed"))
+    return res
+

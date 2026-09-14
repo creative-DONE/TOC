@@ -181,17 +181,28 @@ def seed_factory_data(db: Session):
     # - Flexible Horizon (>7d deadline): NO LOCK for products with > 1 week deadline
     orders_data = [
         # Today: Urgent Orders (Due in 1-2 days) -> Locked (Today)
-        ("ORD-101", 0, "Polyester Interlock Fabric", 350.0, "Deep Midnight Navy", "DEEP_NAVY", 1, "EMERGENCY", "EXPORT_GRADE_A"),
-        ("ORD-102", 1, "Cotton 100% Greige Knit", 400.0, "Vibrant Royal Blue", "ROYAL_BLUE", 2, "HIGH", "EXPORT_GRADE_A"),
+        ("ORD-101", 0, "Polyester Interlock Fabric", 300.0, "Deep Midnight Navy", "DEEP_NAVY", 1, "EMERGENCY", "EXPORT_GRADE_A"),
+        ("ORD-102", 1, "Cotton 100% Greige Knit", 350.0, "Vibrant Royal Blue", "ROYAL_BLUE", 2, "HIGH", "EXPORT_GRADE_A"),
         
-        # Tomorrow: Near-term Orders (Due in 3-4 days) -> Mostly Locked (Tomorrow)
-        ("ORD-103", 2, "Poly-Cotton 65/35 Blend", 300.0, "Scarlet Crimson Red", "SCARLET_RED", 3, "HIGH", "EXPORT_GRADE_A"),
-        ("ORD-104", 3, "Rayon Viscose Fabric", 380.0, "Sky Aqua Blue", "SKY_BLUE", 4, "MEDIUM", "COMMERCIAL"),
+        # Near-term Orders (Due in 3-4 days)
+        ("ORD-103", 2, "Poly-Cotton 65/35 Blend", 250.0, "Scarlet Crimson Red", "SCARLET_RED", 3, "HIGH", "EXPORT_GRADE_A"),
+        ("ORD-104", 3, "Rayon Viscose Fabric", 300.0, "Sky Aqua Blue", "SKY_BLUE", 4, "MEDIUM", "COMMERCIAL"),
         
-        # Flexible Horizon: Due in > 1 week (> 7 days deadline) -> NO LOCK
-        ("ORD-105", 0, "Cotton 100% Greige Knit", 450.0, "Bleached Optical White", "WHITE", 10, "HIGH", "EXPORT_GRADE_A"),
-        ("ORD-106", 1, "Organic Cotton GOTS Certified", 400.0, "Pastel Rose Pink", "PASTEL_PINK", 14, "MEDIUM", "EXPORT_GRADE_A"),
-        ("ORD-107", 4, "Cotton 100% Greige Knit", 500.0, "Intense Jet Black", "JET_BLACK", 21, "LOW", "UTILITY"),
+        # Mid-term Orders (Due in 5-8 days)
+        ("ORD-105", 0, "Cotton 100% Greige Knit", 400.0, "Bleached Optical White", "WHITE", 5, "HIGH", "EXPORT_GRADE_A"),
+        ("ORD-106", 1, "Organic Cotton GOTS Certified", 350.0, "Pastel Rose Pink", "PASTEL_PINK", 6, "MEDIUM", "EXPORT_GRADE_A"),
+        ("ORD-107", 4, "Cotton 100% Greige Knit", 450.0, "Intense Jet Black", "JET_BLACK", 7, "LOW", "UTILITY"),
+        ("ORD-108", 1, "Polyester Interlock Fabric", 300.0, "Golden Sun Yellow", "GOLDEN_YELLOW", 8, "HIGH", "EXPORT_GRADE_A"),
+
+        # Flexible Orders (Due in 9-16 days)
+        ("ORD-109", 2, "Cotton 100% Greige Knit", 350.0, "Emerald Olive Green", "EMERALD_GREEN", 9, "MEDIUM", "EXPORT_GRADE_A"),
+        ("ORD-110", 3, "Poly-Cotton 65/35 Blend", 250.0, "Vibrant Royal Blue", "ROYAL_BLUE", 10, "LOW", "COMMERCIAL"),
+        ("ORD-111", 0, "Rayon Viscose Fabric", 350.0, "Scarlet Crimson Red", "SCARLET_RED", 11, "HIGH", "EXPORT_GRADE_A"),
+        ("ORD-112", 1, "Cotton 100% Greige Knit", 400.0, "Bleached Optical White", "WHITE", 12, "MEDIUM", "EXPORT_GRADE_A"),
+        ("ORD-113", 2, "Organic Cotton GOTS Certified", 300.0, "Pastel Rose Pink", "PASTEL_PINK", 13, "HIGH", "EXPORT_GRADE_A"),
+        ("ORD-114", 4, "Polyester Interlock Fabric", 350.0, "Deep Midnight Navy", "DEEP_NAVY", 14, "LOW", "UTILITY"),
+        ("ORD-115", 0, "Cotton 100% Greige Knit", 400.0, "Intense Jet Black", "JET_BLACK", 15, "HIGH", "EXPORT_GRADE_A"),
+        ("ORD-116", 3, "Poly-Cotton 65/35 Blend", 300.0, "Sky Aqua Blue", "SKY_BLUE", 16, "MEDIUM", "COMMERCIAL"),
     ]
 
     orders = []

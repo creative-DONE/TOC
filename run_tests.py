@@ -14,6 +14,7 @@ from backend.tests.test_rush_insertion import test_rush_order_insertion_evaluati
 from backend.tests.test_rescheduling import test_machine_breakdown_dynamic_rescheduling
 from backend.tests.test_reports import test_excel_and_pdf_generation
 from backend.tests.test_machine_management import test_machine_crud_and_maintenance
+from backend.tests.test_agenda_reorganize import test_slot_toggle_lock, test_slot_update_and_reorganize, test_locked_job_conflict_detection
 
 def run_all():
     db = SessionLocal()
@@ -32,6 +33,9 @@ def run_all():
         ("Dynamic Machine Breakdown Rescheduling", lambda: test_machine_breakdown_dynamic_rescheduling(db)),
         ("Machine CRUD & Dynamic Maintenance Rescheduling", lambda: test_machine_crud_and_maintenance(db)),
         ("Excel & PDF Production Report Generation", lambda: test_excel_and_pdf_generation(db)),
+        ("Schedule Slot Lock/Unlock Toggle", test_slot_toggle_lock),
+        ("Schedule Slot Manual Edit & Dynamic Reorganization", test_slot_update_and_reorganize),
+        ("Locked Job Collision Detection & Conflict Resolution", test_locked_job_conflict_detection),
     ]
 
     print("================================================================")
