@@ -78,8 +78,19 @@ Evaluates schedules using a strict hierarchical multi-objective function:
 6. **Manpower Feasibility**: 5 pts
 7. **Buffers & Schedule Stability**: 10 pts
 
-### 11. Reports & Exports
-- **Excel (.xlsx)**: Master production schedule with freeze locks, quantities, and times.
+### 11. Due Date Driven Automatic Scheduling & Daily Capacity
+- **Earliest Due Date (EDD) Priority**: Jobs are prioritized using due dates, customer priority tiers, and urgency scores.
+- **Strict Daily Machine Capacity**: Daily processing limits are enforced per machine for every single day (e.g. JET-M1: 500 kg/day, JET-M2: 800 kg/day, SOFT-M3: 400 kg/day, SOFT-M4: 600 kg/day, JIG-M5: 1,000 kg/day, STENT-M6: 1,500 kg/day) with zero daily overload.
+- **Pre-Allocation Capacity Feasibility**: Proactively calculates cumulative capacity before deadlines to surface deficit alerts and recommendations.
+- **Dynamic Planning Horizon**: Eliminates arbitrary scheduling window restrictions, expanding capacity horizon automatically to accommodate orders with deadlines across weeks and months.
+
+### 12. Interactive Production Planning Matrix & Excel Integration
+- **2D Smooth Scrolling & Full Backlog**: Real-time matrix supporting horizontal and vertical scrolling across the entire production order backlog with sticky header and column pins.
+- **High-Legibility Typography**: High-contrast, bold font sizing for clear shop-floor and planner readability.
+- **Excel Schedule Import & Export**: One-click import parsing relative days, ISO dates, customer tiers, and quantities into the live scheduling engine, with instant Excel matrix export.
+
+### 13. Reports & Exports
+- **Excel (.xlsx)**: Master production schedule with freeze locks, quantities, due dates, and planned times.
 - **PDF (.pdf)**: Formal dispatch and shop-floor work order document.
 
 ---
@@ -110,7 +121,7 @@ prime tech/
 │   │   │   ├── processing_time.py   # Composite processing time & historical learning
 │   │   │   ├── utilities.py         # Water, steam, electricity, effluent limits
 │   │   │   ├── wip_rope.py          # Drum-Buffer-Rope 1500kg WIP ceiling
-│   │   │   ├── buffers.py           # Drum & shipping buffers, buffer penetration, 7-day rule
+│   │   │   ├── buffers.py           # Drum & shipping buffers, buffer penetration
 │   │   │   ├── freeze_window.py     # Configurable freeze window policy
 │   │   │   ├── cost_engine.py       # Manufacturing cost accounting
 │   │   │   ├── stability.py         # Schedule stability score
@@ -125,19 +136,21 @@ prime tech/
 │   │   │   └── hierarchy.py         # 3-level planning (Monthly, Weekly, Daily)
 │   │   ├── routers/                 # REST API endpoints
 │   │   │   ├── dashboard.py         # Executive KPIs & TOC radar
-│   │   │   ├── orders.py            # Order management & urgency scores
+│   │   │   ├── orders.py            # Order management, Excel import & urgency scores
 │   │   │   ├── machines.py          # Machines & reliability telemetry
 │   │   │   ├── materials.py         # Materials, inventory & MRP forecasting
 │   │   │   ├── manpower.py          # Operators, skills & certifications
-│   │   │   ├── schedule.py          # Schedule slots, override, rush-insert, score
+│   │   │   ├── schedule.py          # Schedule slots, override, rush-insert, score, planning matrix
 │   │   │   ├── simulation.py        # What-If sandbox endpoint
 │   │   │   ├── disruptions.py       # Breakdown & delay triggers
 │   │   │   └── reports.py           # Excel & PDF downloads
 │   │   ├── services/
 │   │   │   ├── scheduler_service.py # Central DBR scheduler coordinator
+│   │   │   ├── matrix_service.py    # Interactive Planning Matrix coordinator
+│   │   │   ├── excel_import_service.py # Excel order batch parser & importer
 │   │   │   └── report_service.py    # OpenPyXL & ReportLab generators
 │   │   ├── static/
-│   │   │   ├── css/app.css          # Industrial dark/glassmorphic CSS
+│   │   │   ├── css/app.css          # Modern minimalist vibrant light UI CSS
 │   │   │   └── js/app.js            # React 18 SPA application
 │   │   └── templates/
 │   │       └── index.html           # Single-Page Application entry
@@ -148,6 +161,11 @@ prime tech/
 │       ├── test_readiness.py
 │       ├── test_rush_insertion.py
 │       ├── test_rescheduling.py
+│       ├── test_daily_capacity.py
+│       ├── test_due_date_scheduling.py
+│       ├── test_planning_matrix.py
+│       ├── test_factory_scheduler.py
+│       ├── test_agenda_reorganize.py
 │       └── test_reports.py
 ├── run.py                           # Server launcher
 ├── run_tests.py                     # Unit & algorithm test runner
@@ -172,14 +190,19 @@ Then open your web browser at:
 ```
 http://127.0.0.1:8000
 ```
-Upon startup, the database is automatically seeded with 6 production machines, 13 raw materials & dyes, 5 operators, and 21 customer production orders. The initial TOC schedule is automatically generated and visible immediately on the dashboard and Gantt timeline!
+Upon startup, the database is automatically seeded with 6 production machines, 13 raw materials & dyes, 5 operators, and 16+ realistic customer production orders. The initial TOC schedule is automatically generated and visible immediately on the dashboard and Gantt timeline!
 
 ### 3. Run Automated Tests
-Run the unit and algorithm test suite:
+Run the pytest suite (43 unit & integration tests):
+```bash
+python -m pytest backend/tests/ -v
+```
+Run the core scheduler test suite:
 ```bash
 python run_tests.py
 ```
-Run the full HTTP end-to-end integration test:
+Run the full HTTP end-to-end integration test suite:
 ```bash
 python test_e2e.py
 ```
+
