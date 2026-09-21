@@ -104,14 +104,15 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
     # Calculate dynamic machine load & utilization
     machine_metrics = []
     total_horizon_hours = horizon_days * 24.0
-    avg_batch_hours = 3.2
 
     for m in machines:
         m_slots = sched_by_machine.get(m.id, [])
         current_load_kg = sum(get_slot_weight(s) for s in m_slots)
 
         eff_hours = total_horizon_hours * (m.efficiency or 0.90)
-        nominal_capacity_kg = (eff_hours / avg_batch_hours) * m.max_batch_kg
+        m_batch_hours = float(getattr(m, "processing_time_hours", None) or 3.0)
+        m_working_hours = float(getattr(m, "working_hours_per_day", None) or 8.0)
+        nominal_capacity_kg = (eff_hours / m_batch_hours) * m.max_batch_kg
         utilization_pct = (current_load_kg / max(1.0, nominal_capacity_kg)) * 100.0
 
         machine_metrics.append({
@@ -123,6 +124,8 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
             "nominal_capacity_kg": round(nominal_capacity_kg, 1),
             "current_load_kg": round(current_load_kg, 1),
             "utilization_pct": round(utilization_pct, 1),
+            "processing_time_hours": m_batch_hours,
+            "working_hours_per_day": m_working_hours,
             "status": m.status,
             "compatible_cloth_types": m.compatible_cloth_types,
             "active_batches_count": len(m_slots),
@@ -149,6 +152,8 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
             "capacity_kg": mm["capacity_kg"],
             "current_load_kg": mm["current_load_kg"],
             "utilization_pct": mm["utilization_pct"],
+            "processing_time_hours": mm["processing_time_hours"],
+            "working_hours_per_day": mm["working_hours_per_day"],
             "is_bottleneck": mm["is_bottleneck"]
         }
         for mm in machine_metrics
@@ -557,7 +562,14 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
 
     # Snapshot pre-state for diff tracking
     pre_snapshot = {}
-    for s in db.query(ProductionSchedule).all():
+    pre_order_machine_map = {}
+    for o in db.query(Order).filter(Order.status.not_in(["CANCELLED", "COMPLETED"])).all():
+        if req.order_id and o.id == req.order_id:
+            continue
+        if o.assigned_machine_id:
+            pre_order_machine_map[o.id] = o.assigned_machine_id
+
+    for s in db.query(ProductionSchedule).filter(ProductionSchedule.status.not_in(["CANCELLED", "COMPLETED"])).all():
         pre_snapshot[s.id] = {
             "order_number": s.order.order_number if s.order else f"ORD-{s.order_id}",
             "machine_id": s.machine_id,
@@ -566,8 +578,11 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
             "planned_end": s.planned_end,
             "changeover_min": s.changeover_min
         }
+        if s.order_id and s.order_id != req.order_id and s.order_id not in pre_order_machine_map:
+            pre_order_machine_map[s.order_id] = s.machine_id
 
     target_ord_name = req.order_number or f"Order #{req.order_id}" if req.order_id else "Order"
+    action_is_locked = None
 
     try:
         # Atomic Transaction Savepoint
@@ -584,20 +599,21 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
 
                 target_ord_name = order.order_number
                 slots = db.query(ProductionSchedule).filter(ProductionSchedule.order_id == req.order_id).all()
-                current_lock = any(s.is_locked for s in slots) if slots else False
+                current_lock = getattr(order, "is_locked", False) or (any(s.is_locked for s in slots) if slots else False)
                 new_lock = not current_lock
+                action_is_locked = new_lock
 
+                order.is_locked = new_lock
                 for s in slots:
                     s.is_locked = new_lock
                     s.freeze_level = "LOCKED" if new_lock else "FLEXIBLE"
                     s.scheduling_reason = f"{'LOCKED' if new_lock else 'UNLOCKED'} manually from Planning Matrix."
 
                 db.flush()
-                return {
-                    "success": True,
-                    "message": f"Order {order.order_number} is now {'LOCKED (protected from dynamic shifts)' if new_lock else 'UNLOCKED (flexible horizon)'}.",
-                    "is_locked": new_lock
-                }
+
+                if not new_lock:
+                    # User unlocked the order -> immediately re-optimize schedule across factory
+                    optimize_factory_schedule(db, reference_now=now, force_reschedule_all=False, preserve_locked=True)
 
             # =========================================================================
             # ACTION: DELETE_ORDER
@@ -714,14 +730,17 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
                         if start_time < now:
                             start_time = now + timedelta(hours=1 + idx * 4)
 
-                        proc_time_res = calculate_composite_processing_time(
-                            cloth_type=new_order.cloth_type,
-                            colour_name=new_order.colour_name,
-                            quantity_kg=alloc_qty,
-                            changeover_min=20.0,
-                            machine_efficiency=target_mach.efficiency
-                        )
-                        proc_min = proc_time_res["total_processing_min"]
+                        if getattr(target_mach, "processing_time_hours", None):
+                            proc_min = float(target_mach.processing_time_hours) * 60.0 + 20.0
+                        else:
+                            proc_time_res = calculate_composite_processing_time(
+                                cloth_type=new_order.cloth_type,
+                                colour_name=new_order.colour_name,
+                                quantity_kg=alloc_qty,
+                                changeover_min=20.0,
+                                machine_efficiency=target_mach.efficiency
+                            )
+                            proc_min = proc_time_res["total_processing_min"]
                         end_time = start_time + timedelta(minutes=proc_min)
 
                         batch = OrderBatch(
@@ -757,6 +776,7 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
                         )
                         db.add(new_slot)
                     new_order.assigned_machine_id = target_m_id
+                    new_order.is_locked = True
 
                 db.flush()
                 # Run Central Factory Optimizer across complete plant
@@ -850,13 +870,16 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
                     if prop_start < now:
                         prop_start = now + timedelta(hours=1 + idx * 4)
 
-                    dur_min = calculate_composite_processing_time(
-                        cloth_type=order.cloth_type,
-                        colour_name=order.colour_name,
-                        quantity_kg=alloc_qty,
-                        changeover_min=20.0,
-                        machine_efficiency=target_mach.efficiency
-                    )["total_processing_min"]
+                    if getattr(target_mach, "processing_time_hours", None):
+                        dur_min = float(target_mach.processing_time_hours) * 60.0 + 20.0
+                    else:
+                        dur_min = calculate_composite_processing_time(
+                            cloth_type=order.cloth_type,
+                            colour_name=order.colour_name,
+                            quantity_kg=alloc_qty,
+                            changeover_min=20.0,
+                            machine_efficiency=target_mach.efficiency
+                        )["total_processing_min"]
                     prop_end = prop_start + timedelta(minutes=dur_min)
 
                     batch = OrderBatch(
@@ -893,6 +916,7 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
                     db.add(slot)
 
                 order.status = "SCHEDULED"
+                order.is_locked = True
                 db.flush()
 
                 # Run Central Factory Optimizer to cascade and re-balance remaining orders
@@ -1009,7 +1033,22 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
     # Calculate diff after successful commit
     shifted_jobs = []
     total_co_delta = 0.0
-    all_post = db.query(ProductionSchedule).all()
+    all_post = db.query(ProductionSchedule).filter(ProductionSchedule.status.not_in(["CANCELLED", "COMPLETED"])).all()
+    post_order_machine_map = {}
+    for ps in all_post:
+        if ps.order_id:
+            post_order_machine_map[ps.order_id] = ps.machine_id
+
+    for o in db.query(Order).filter(Order.status.not_in(["CANCELLED", "COMPLETED"])).all():
+        if o.id not in post_order_machine_map and o.assigned_machine_id:
+            post_order_machine_map[o.id] = o.assigned_machine_id
+
+    reassigned_orders = [
+        oid for oid, m_id in post_order_machine_map.items()
+        if oid in pre_order_machine_map and pre_order_machine_map[oid] != m_id
+    ]
+    reassigned_count = len(reassigned_orders)
+
     for ps in all_post:
         pre = pre_snapshot.get(ps.id)
         if not pre:
@@ -1036,17 +1075,35 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
     all_utilities = db.query(FactoryUtility).all()
     bottleneck_info = identify_system_bottleneck(all_machines, all_orders, all_utilities, horizon_days=7)
 
-    summary_msg = f"SCHEDULE RE-OPTIMIZED: {target_ord_name} updated."
-    if shifted_jobs:
-        summary_msg += f" {len(shifted_jobs)} downstream jobs cascaded."
-    summary_msg += f" Active Drum: {bottleneck_info.get('resource_name', 'Vessel')} ({bottleneck_info.get('utilization_pct', 0.0)}% util)."
+    if action == "DELETE_ORDER":
+        if reassigned_count > 0:
+            summary_msg = f"Schedule recalculated — {reassigned_count} order{'s' if reassigned_count > 1 else ''} reassigned to available capacity."
+        else:
+            summary_msg = "Schedule recalculated — no reassignment required."
+    elif action == "TOGGLE_LOCK":
+        if action_is_locked:
+            summary_msg = f"Order {target_ord_name} is now LOCKED (protected from dynamic shifts)."
+        else:
+            if reassigned_count > 0:
+                summary_msg = f"Order {target_ord_name} unlocked. Schedule recalculated — {reassigned_count} order{'s' if reassigned_count > 1 else ''} reassigned to available capacity."
+            else:
+                summary_msg = f"Order {target_ord_name} unlocked. Schedule recalculated."
+    else:
+        summary_msg = f"SCHEDULE RE-OPTIMIZED: {target_ord_name} updated."
+        if reassigned_count > 0:
+            summary_msg += f" {reassigned_count} order{'s' if reassigned_count > 1 else ''} reassigned to available capacity."
+        elif shifted_jobs:
+            summary_msg += f" {len(shifted_jobs)} downstream jobs cascaded."
+        summary_msg += f" Active Drum: {bottleneck_info.get('resource_name', 'Vessel')} ({bottleneck_info.get('utilization_pct', 0.0)}% util)."
 
-    return {
+    res = {
         "success": True,
         "message": summary_msg,
         "diff": {
             "action": action,
             "target_order": target_ord_name,
+            "reassigned_count": reassigned_count,
+            "reassigned_orders": reassigned_orders,
             "shifted_jobs_count": len(shifted_jobs),
             "shifted_jobs": shifted_jobs,
             "changeover_delta_min": round(total_co_delta, 1),
@@ -1054,3 +1111,6 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
             "bottleneck_utilization_pct": bottleneck_info.get("utilization_pct", 0.0)
         }
     }
+    if action == "TOGGLE_LOCK":
+        res["is_locked"] = action_is_locked
+    return res

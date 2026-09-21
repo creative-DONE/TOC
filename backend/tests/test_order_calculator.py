@@ -236,6 +236,12 @@ def test_8_working_hours_per_day_rollover(db: Session):
     now = datetime(2026, 9, 21, 8, 0, 0)
     due_date = now + timedelta(days=5)
 
+    # Ensure JET-M1 has 3.0h processing time
+    m1_db = db.query(Machine).filter(Machine.code == "JET-M1").first()
+    if m1_db and m1_db.processing_time_hours != 3.0:
+        m1_db.processing_time_hours = 3.0
+        db.commit()
+
     # 1500kg on M1 (capacity 500, proc 3h) = 3 batches * 3h = 9.0 hours of processing
     # Shift is 8 hours/day (08:00 to 16:00).
     # Cannot finish on Day 1 (2026-09-21); must finish on Day 2 (2026-09-22).

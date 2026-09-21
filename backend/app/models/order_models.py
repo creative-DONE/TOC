@@ -77,6 +77,7 @@ class Order(Base):
     shipping_buffer_hours = Column(Float, default=12.0)
     buffer_penetration_pct = Column(Float, default=0.0) # 0 to 100%
     freeze_level = Column(String(20), default="FLEXIBLE") # LOCKED, MOSTLY_LOCKED, LIMITED, MODERATE, FLEXIBLE
+    is_locked = Column(Boolean, default=False) # True if manually locked by user
     
     # Explainability & Notes
     scheduling_reason = Column(Text, nullable=True)

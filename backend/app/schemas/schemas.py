@@ -61,6 +61,7 @@ class OrderResponse(BaseModel):
     shipping_buffer_hours: float
     buffer_penetration_pct: float
     freeze_level: str
+    is_locked: bool = False
     scheduling_reason: Optional[str] = None
     batches_count: int = 1
 

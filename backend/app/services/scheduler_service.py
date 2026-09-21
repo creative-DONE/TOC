@@ -288,7 +288,7 @@ def optimize_factory_schedule(
             ProductionSchedule.status.in_(["SCHEDULED", "IN_PROGRESS"])
         ).order_by(ProductionSchedule.planned_start.asc()).all()
 
-        is_order_locked = any(s.is_locked for s in o_slots) if o_slots else False
+        is_order_locked = bool(getattr(order, "is_locked", False) or (any(s.is_locked for s in o_slots) if o_slots else False))
 
         if preserve_locked and not force_reschedule_all and is_order_locked:
             # Preserve locked order: verify batch count matches order quantity without duplicate ghost slots
@@ -310,6 +310,8 @@ def optimize_factory_schedule(
                         o_slots[0].batch.batch_quantity_kg = order.quantity_kg
                 else:
                     new_allocs = split_order_into_capacity_allocations(order.quantity_kg, mach.max_batch_kg)
+                    base_start = o_slots[0].planned_start if (o_slots and o_slots[0].planned_start) else (order.planned_start or reference_now)
+                    proc_h = getattr(mach, "processing_time_hours", 3.0) or 3.0
                     for s in o_slots:
                         db.delete(s)
                     for b in db.query(OrderBatch).filter(OrderBatch.order_id == order.id).all():
@@ -317,13 +319,31 @@ def optimize_factory_schedule(
                     db.flush()
                     o_slots = []
                     for idx, a_kg in enumerate(new_allocs):
+                        slot_start = base_start + timedelta(days=idx)
+                        slot_end = slot_start + timedelta(hours=proc_h)
                         nb = OrderBatch(order_id=order.id, batch_number=idx+1, total_batches=len(new_allocs),
-                                        batch_quantity_kg=a_kg, assigned_machine_id=mach.id, status="SCHEDULED")
+                                        batch_quantity_kg=a_kg, assigned_machine_id=mach.id, status="SCHEDULED",
+                                        planned_start=slot_start, planned_completion=slot_end)
                         db.add(nb)
                         db.flush()
-                        n_slot = ProductionSchedule(schedule_tier=ScheduleTier.WEEKLY_SCHEDULE.value,
-                                                    order_id=order.id, batch_id=nb.id, machine_id=mach.id,
-                                                    is_locked=True, freeze_level="LOCKED", status="SCHEDULED")
+                        n_slot = ProductionSchedule(
+                            schedule_tier=ScheduleTier.WEEKLY_SCHEDULE.value,
+                            order_id=order.id,
+                            batch_id=nb.id,
+                            machine_id=mach.id,
+                            planned_start=slot_start,
+                            planned_end=slot_end,
+                            base_processing_min=proc_h * 60.0 * 0.7,
+                            setup_min=15.0,
+                            changeover_min=20.0,
+                            cleaning_min=15.0,
+                            drum_buffer_min=60.0,
+                            shipping_buffer_min=120.0,
+                            is_locked=True,
+                            freeze_level="LOCKED",
+                            status="SCHEDULED",
+                            scheduling_reason="Locked order batch recalculation."
+                        )
                         db.add(n_slot)
                         o_slots.append(n_slot)
 
@@ -610,7 +630,9 @@ def optimize_factory_schedule(
                     slot_start = maint.end_time + timedelta(minutes=20)
                     slot_end = slot_start + timedelta(minutes=total_slot_min)
 
-            freeze_level, is_locked = get_freeze_status_for_time(slot_start, now, curr_order.due_date)
+            freeze_level, _ = get_freeze_status_for_time(slot_start, now, curr_order.due_date)
+            # Flexible orders remain unlocked so the central optimizer can rebalance them dynamically
+            is_locked = False
 
             batch = OrderBatch(
                 order_id=curr_order.id,
@@ -675,6 +697,7 @@ def optimize_factory_schedule(
         curr_order.planned_completion = max(batch_ends)
         curr_order.status = OrderStatus.SCHEDULED.value
         curr_order.assigned_machine_id = order_allocations[0]["machine"].id if order_allocations else None
+        curr_order.is_locked = False
 
         # Shortage diagnostic computed during pre-allocation check is preserved
 

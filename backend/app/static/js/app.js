@@ -2802,6 +2802,74 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
     fetchMatrix();
   }, [agendaDays]);
 
+  // Inline machine batch time editing in matrix header
+  const [editingMatrixMachId, setEditingMatrixMachId] = React.useState(null);
+  const [matrixBatchTimeValues, setMatrixBatchTimeValues] = React.useState({});
+  const [savingMatrixMachId, setSavingMatrixMachId] = React.useState(null);
+  const [savedSuccessMachId, setSavedSuccessMachId] = React.useState(null);
+
+  const handleSaveMatrixBatchTime = async (m) => {
+    const rawVal = matrixBatchTimeValues[m.id] !== undefined ? matrixBatchTimeValues[m.id] : m.processing_time_hours;
+    const val = parseFloat(rawVal);
+    if (isNaN(val) || val <= 0) {
+      if (showToast) {
+        showToast('Batch time must be greater than 0 hours.', 'error');
+      } else {
+        alert('Batch time must be greater than 0 hours.');
+      }
+      return;
+    }
+
+    setSavingMatrixMachId(m.id);
+    try {
+      const res = await fetch(`/api/machines/${m.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...m,
+          processing_time_hours: val,
+          capacity_kg: m.capacity_kg || m.max_batch_kg
+        })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to update machine batch processing time');
+      }
+      const updated = await res.json();
+
+      // Immediately update local matrix state for snappy UI
+      setLocalMatrix(prev => {
+        if (!prev) return prev;
+        const newMachines = (prev.machines || []).map(mach =>
+          mach.id === m.id ? { ...mach, processing_time_hours: val } : mach
+        );
+        return { ...prev, machines: newMachines };
+      });
+
+      setEditingMatrixMachId(null);
+      setSavedSuccessMachId(m.id);
+      setTimeout(() => {
+        setSavedSuccessMachId(prevId => prevId === m.id ? null : prevId);
+      }, 2500);
+
+      if (showToast) {
+        showToast(`✓ ${m.code} batch processing time updated to ${val} hr!`);
+      }
+
+      // Re-fetch all data and re-evaluate planning matrix
+      if (onRefresh) onRefresh();
+      fetchMatrix();
+    } catch (err) {
+      if (showToast) {
+        showToast('Error saving batch time: ' + err.message, 'error');
+      } else {
+        alert('Error saving batch time: ' + err.message);
+      }
+    } finally {
+      setSavingMatrixMachId(null);
+    }
+  };
+
   React.useEffect(() => {
     if (window.lucide) {
       window.lucide.createIcons();
@@ -3410,34 +3478,103 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
                   </th>
 
                   {/* Dynamic Machine Headers */}
-                  {matrixMachines.map(m => (
-                    <th
-                      key={m.id}
-                      className={`top-[44px] z-20 px-3.5 py-2.5 text-center border-r border-slate-200 min-w-[145px] transition-colors ${
-                        m.is_bottleneck ? 'bg-amber-50 border border-amber-200 ring-1 ring-inset ring-amber-500/40' : 'bg-white'
-                      }`}
-                    >
-                      <div className="font-black text-slate-900 text-sm flex items-center justify-center gap-1">
-                        <span>{m.code}</span>
-                        {m.is_bottleneck && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" title="Active TOC Drum"></span>
-                        )}
-                      </div>
-                      <div className="text-xs text-slate-500 font-semibold mt-0.5">Cap: {m.capacity_kg} kg</div>
-                      <div className="text-xs text-slate-500 font-semibold">Load: {m.current_load_kg} kg</div>
-                      <div className="mt-1">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black inline-block ${
-                          m.is_bottleneck
-                            ? 'bg-amber-500/30 text-amber-900 border border-amber-500/50 animate-pulse'
-                            : m.utilization_pct > 75
-                            ? 'bg-blue-500/20 text-blue-800 border border-blue-500/30'
-                            : 'bg-emerald-500/20 text-emerald-800 border border-emerald-500/30'
-                        }`}>
-                          {m.is_bottleneck ? `DRUM ${m.utilization_pct}%` : `${m.utilization_pct}%`}
-                        </span>
-                      </div>
-                    </th>
-                  ))}
+                  {matrixMachines.map(m => {
+                    const isEditing = editingMatrixMachId === m.id;
+                    const isSaved = savedSuccessMachId === m.id;
+                    const isSaving = savingMatrixMachId === m.id;
+                    const currentBatchTime = m.processing_time_hours !== undefined && m.processing_time_hours !== null ? m.processing_time_hours : 3;
+
+                    return (
+                      <th
+                        key={m.id}
+                        className={`top-[44px] z-20 px-3 py-2 text-center border-r border-slate-200 min-w-[155px] transition-colors ${
+                          m.is_bottleneck ? 'bg-amber-50/90 border border-amber-200 ring-1 ring-inset ring-amber-500/40' : 'bg-white'
+                        }`}
+                      >
+                        {/* 1. Machine Code */}
+                        <div className="font-black text-slate-900 text-sm flex items-center justify-center gap-1">
+                          <span>{m.code}</span>
+                          {m.is_bottleneck && (
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" title="Active TOC Drum"></span>
+                          )}
+                        </div>
+
+                        {/* 2. Cap: X kg/batch */}
+                        <div className="text-xs text-slate-500 font-semibold mt-0.5">
+                          Cap: {m.capacity_kg} kg/batch
+                        </div>
+
+                        {/* 3. Batch Time: Editable Inline */}
+                        <div className="my-1">
+                          {isEditing ? (
+                            <div className="inline-flex items-center justify-center gap-1 bg-blue-50/90 p-1 rounded border border-blue-300 shadow-inner">
+                              <span className="text-[11px] text-slate-600 font-medium whitespace-nowrap">Batch Time:</span>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0.1"
+                                className="w-14 px-1 py-0.5 text-xs text-center border border-blue-500 rounded bg-white text-slate-900 font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
+                                value={matrixBatchTimeValues[m.id] !== undefined ? matrixBatchTimeValues[m.id] : currentBatchTime}
+                                onChange={(e) => setMatrixBatchTimeValues(prev => ({ ...prev, [m.id]: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveMatrixBatchTime(m);
+                                  if (e.key === 'Escape') setEditingMatrixMachId(null);
+                                }}
+                                autoFocus
+                              />
+                              <span className="text-[11px] text-slate-600 font-medium">hr</span>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveMatrixBatchTime(m)}
+                                disabled={isSaving}
+                                className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold shadow transition cursor-pointer"
+                                title="Save batch time"
+                              >
+                                {isSaving ? "..." : "Save"}
+                              </button>
+                            </div>
+                          ) : isSaved ? (
+                            <div className="inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-300 text-emerald-700 text-xs font-bold animate-pulse">
+                              <span>✓ Saved</span>
+                            </div>
+                          ) : (
+                            <div
+                              onClick={() => {
+                                setEditingMatrixMachId(m.id);
+                                setMatrixBatchTimeValues(prev => ({
+                                  ...prev,
+                                  [m.id]: currentBatchTime
+                                }));
+                              }}
+                              className="inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded text-xs text-slate-600 font-semibold hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 cursor-pointer transition group"
+                              title="Click to edit batch processing time"
+                            >
+                              <span>Batch Time: {currentBatchTime} hr</span>
+                              <span className="text-[10px] text-blue-500 opacity-60 group-hover:opacity-100">✎</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 4. Load: X kg */}
+                        <div className="text-xs text-slate-500 font-semibold">
+                          Load: {m.current_load_kg} kg
+                        </div>
+
+                        {/* 5. DRUM badge / Utilization */}
+                        <div className="mt-1">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black inline-block ${
+                            m.is_bottleneck
+                              ? 'bg-amber-500/30 text-amber-900 border border-amber-500/50 animate-pulse'
+                              : m.utilization_pct > 75
+                              ? 'bg-blue-500/20 text-blue-800 border border-blue-500/30'
+                              : 'bg-emerald-500/20 text-emerald-800 border border-emerald-500/30'
+                          }`}>
+                            {m.is_bottleneck ? `DRUM ${m.utilization_pct}%` : `${m.utilization_pct}%`}
+                          </span>
+                        </div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
 

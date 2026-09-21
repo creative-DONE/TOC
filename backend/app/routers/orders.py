@@ -60,6 +60,7 @@ def get_orders(
             shipping_buffer_hours=o.shipping_buffer_hours,
             buffer_penetration_pct=o.buffer_penetration_pct,
             freeze_level=o.freeze_level,
+            is_locked=getattr(o, 'is_locked', False),
             scheduling_reason=o.scheduling_reason,
             batches_count=len(o.batches) if o.batches else 1
         ))
@@ -140,6 +141,7 @@ def create_order(order_in: OrderCreate, db: Session = Depends(get_db)):
         shipping_buffer_hours=new_order.shipping_buffer_hours,
         buffer_penetration_pct=new_order.buffer_penetration_pct,
         freeze_level=new_order.freeze_level,
+        is_locked=False,
         scheduling_reason=new_order.scheduling_reason,
         batches_count=1
     )

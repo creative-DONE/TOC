@@ -26,10 +26,10 @@ def identify_system_bottleneck(
     # Calculate aggregate workload per machine
     for m in machines:
         # Usable capacity accounting for efficiency and maintenance
-        eff_capacity_hours = total_horizon_hours * m.efficiency
-        # Nominal kg capacity = (eff_capacity_hours / avg_batch_hours) * max_batch_kg
-        avg_batch_hours = 3.2
-        nominal_kg_capacity = (eff_capacity_hours / avg_batch_hours) * m.max_batch_kg
+        eff_capacity_hours = total_horizon_hours * (m.efficiency or 0.90)
+        # Nominal kg capacity = (eff_capacity_hours / m_batch_hours) * max_batch_kg
+        m_batch_hours = float(getattr(m, "processing_time_hours", None) or 3.0)
+        nominal_kg_capacity = (eff_capacity_hours / m_batch_hours) * m.max_batch_kg
 
         # Sum allocated order kg
         allocated_kg = sum(
@@ -46,7 +46,7 @@ def identify_system_bottleneck(
         total_workload_kg = allocated_kg + (unassigned_kg / max(1, len(machines)))
 
         utilization_pct = (total_workload_kg / max(1.0, nominal_kg_capacity)) * 100.0
-        overload_hours = max(0.0, (total_workload_kg - nominal_kg_capacity) / (m.max_batch_kg / avg_batch_hours))
+        overload_hours = max(0.0, (total_workload_kg - nominal_kg_capacity) / (m.max_batch_kg / m_batch_hours))
 
         machine_loads[m.id] = {
             "machine": m,

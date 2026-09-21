@@ -41,7 +41,10 @@ def test_get_planning_matrix_structure(db):
         assert "capacity_kg" in m
         assert "current_load_kg" in m
         assert "utilization_pct" in m
+        assert "processing_time_hours" in m
+        assert "working_hours_per_day" in m
         assert m["capacity_kg"] > 0
+        assert m["processing_time_hours"] > 0
 
     # Active constraint must be identified dynamically
     active_constraint = matrix["active_constraint"]
@@ -237,3 +240,127 @@ def test_excel_planning_matrix_export(db):
             break
 
     assert found_assigned_cell is True
+
+def test_matrix_machine_batch_processing_time(db):
+    """Verifies that planning matrix machine headers include editable processing_time_hours and dynamic updates cascade."""
+    matrix = get_planning_matrix_data(db, horizon_days=7)
+    machines = matrix["machines"]
+
+    m1 = next((m for m in machines if m["code"] == "JET-M1"), None)
+    assert m1 is not None
+    assert "processing_time_hours" in m1
+    assert "working_hours_per_day" in m1
+    assert m1["processing_time_hours"] > 0
+    assert m1["working_hours_per_day"] == 8.0
+
+    # Test dynamic update: change M1 processing time from current to 4.5 hours
+    db_m1 = db.query(Machine).filter(Machine.code == "JET-M1").first()
+    original_proc_time = db_m1.processing_time_hours
+    try:
+        db_m1.processing_time_hours = 4.5
+        db.commit()
+
+        updated_matrix = get_planning_matrix_data(db, horizon_days=7)
+        updated_m1 = next((m for m in updated_matrix["machines"] if m["code"] == "JET-M1"), None)
+        assert updated_m1["processing_time_hours"] == 4.5
+        # With longer batch time, nominal capacity should decrease
+        assert updated_m1["nominal_capacity_kg"] < m1["nominal_capacity_kg"]
+    finally:
+        db_m1.processing_time_hours = original_proc_time
+        db.commit()
+
+def test_order_deletion_rebalances_flexible_machines(db):
+    """
+    Verifies that when an order is deleted:
+    1. The central scheduling engine immediately re-evaluates remaining orders.
+    2. Available machine capacity is re-evaluated across the fleet.
+    3. The notification message strictly follows the required format:
+       'Schedule recalculated — X orders reassigned to available capacity.' or
+       'Schedule recalculated — no reassignment required.'
+    """
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    temp_order = Order(
+        order_number=f"ORD-DEL-{int(now.timestamp()) % 10000}",
+        customer_id=1,
+        cloth_type="Cotton 100% Greige Knit",
+        colour_name="Navy Blue",
+        colour_code="NAVY",
+        quantity_kg=400.0,
+        due_date=now + timedelta(days=5),
+        order_date=now,
+        priority="HIGH",
+        status="PENDING"
+    )
+    db.add(temp_order)
+    db.commit()
+    db.refresh(temp_order)
+
+    m6 = db.query(Machine).filter(Machine.code == "STENT-M6").first()
+    res_assign = execute_matrix_action(db, MatrixEditRequest(
+        action="ASSIGN",
+        order_id=temp_order.id,
+        target_machine_id=m6.id,
+        quantity_kg=400.0,
+        planned_day=2
+    ))
+    assert res_assign["success"] is True
+
+    res_del = execute_matrix_action(db, MatrixEditRequest(
+        action="DELETE_ORDER",
+        order_id=temp_order.id
+    ))
+    assert res_del["success"] is True
+    assert "Schedule recalculated" in res_del["message"]
+    reassigned_count = res_del.get("diff", {}).get("reassigned_count", 0)
+    if reassigned_count > 0:
+        expected_msg = f"Schedule recalculated — {reassigned_count} order{'s' if reassigned_count > 1 else ''} reassigned to available capacity."
+        assert res_del["message"] == expected_msg
+    else:
+        assert res_del["message"] == "Schedule recalculated — no reassignment required."
+
+def test_locked_orders_protected_from_automatic_rebalance(db):
+    """
+    Verifies that locked orders (is_locked=True) are strictly protected and never
+    moved by automatic schedule rebalancing when other orders are modified/deleted.
+    """
+    matrix = get_planning_matrix_data(db)
+    orders = matrix["orders"]
+    assert len(orders) > 1
+
+    target = orders[0]
+    target_id = target["order_id"]
+    orig_assigned_m = target.get("assigned_machine_id")
+
+    res_lock = execute_matrix_action(db, MatrixEditRequest(
+        action="TOGGLE_LOCK",
+        order_id=target_id
+    ))
+    assert res_lock["success"] is True
+    if not res_lock.get("is_locked"):
+        res_lock = execute_matrix_action(db, MatrixEditRequest(
+            action="TOGGLE_LOCK",
+            order_id=target_id
+        ))
+    assert res_lock.get("is_locked") is True
+
+    ord_obj = db.query(Order).filter(Order.id == target_id).first()
+    assert ord_obj.is_locked is True
+
+    res_reopt = execute_matrix_action(db, MatrixEditRequest(
+        action="REOPTIMIZE"
+    ))
+    assert res_reopt["success"] is True
+
+    db.refresh(ord_obj)
+    assert ord_obj.is_locked is True
+    if orig_assigned_m:
+        assert ord_obj.assigned_machine_id == orig_assigned_m
+
+    res_unlock = execute_matrix_action(db, MatrixEditRequest(
+        action="TOGGLE_LOCK",
+        order_id=target_id
+    ))
+    assert res_unlock["success"] is True
+    assert res_unlock.get("is_locked") is False
+

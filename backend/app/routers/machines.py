@@ -81,6 +81,9 @@ def create_machine(data: MachineCreate, db: Session = Depends(get_db)):
     Creates a new machine vessel, initializes its reliability profile,
     and recalculates factory capacity.
     """
+    if data.processing_time_hours is not None and data.processing_time_hours <= 0:
+        raise HTTPException(status_code=400, detail="Batch time must be greater than 0 hours.")
+
     machine_code = data.code
     if not machine_code:
         count = db.query(Machine).count() + 1
