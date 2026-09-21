@@ -4415,7 +4415,8 @@ function ApproxTimeCalculatorView({ showToast }) {
                     <tr>
                       <th className="py-3 px-4">Machine</th>
                       <th className="py-3 px-4">Type</th>
-                      <th className="py-3 px-4 text-right">Daily Cap</th>
+                      <th className="py-3 px-4 text-right">Capacity</th>
+                      <th className="py-3 px-4 text-center">Batches &amp; Processing</th>
                       <th className="py-3 px-4 text-center">Changeover</th>
                       <th className="py-3 px-4">Estimated Completion</th>
                       <th className="py-3 px-4 text-center">Due Date Status</th>
@@ -4435,6 +4436,14 @@ function ApproxTimeCalculatorView({ showToast }) {
                           {alt.daily_capacity_kg} kg
                         </td>
                         <td className="py-3 px-4 text-center">
+                          {alt.is_suitable ? (
+                            <div>
+                              <span className="font-bold text-slate-900">{alt.batches_count} batch{alt.batches_count > 1 ? 'es' : ''}</span>
+                              <div className="text-[10px] text-blue-700 font-semibold">{alt.processing_time_per_batch_hours}h/batch ({alt.total_processing_hours}h)</div>
+                            </div>
+                          ) : '--'}
+                        </td>
+                        <td className="py-3 px-4 text-center">
                           {alt.changeover_min !== null ? (
                             <div>
                               <span className="font-bold text-slate-800">{alt.changeover_min} min</span>
@@ -4446,7 +4455,7 @@ function ApproxTimeCalculatorView({ showToast }) {
                           {alt.estimated_completion ? (
                             <div>
                               <div className="font-bold text-slate-900">{formatDateTime(alt.estimated_completion)}</div>
-                              <div className="text-[10px] text-slate-400 font-medium">{alt.production_hours}h duration</div>
+                              <div className="text-[10px] text-slate-400 font-medium">{alt.total_processing_hours || alt.production_hours}h total on {alt.working_hours_per_day}h shift</div>
                             </div>
                           ) : (
                             <span className="text-slate-400 italic">{alt.unsuitability_reason || 'Not suitable'}</span>
