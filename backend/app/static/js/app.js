@@ -4282,8 +4282,8 @@ function ApproxTimeCalculatorView({ showToast }) {
                     {rec.machine_code}
                   </span>
                 </div>
-                <div className="text-xs text-slate-500 font-semibold mt-1">
-                  Type: {rec.machine_type} • Daily Capacity: {rec.daily_capacity_kg} kg/day
+                <div className="text-xs text-slate-600 font-semibold mt-1">
+                  Type: {rec.machine_type} • Cap: <strong className="text-slate-900">{rec.daily_capacity_kg} kg/batch</strong> • Proc Time: <strong className="text-blue-700">{rec.processing_time_per_batch_hours} hrs/batch</strong> • Work Shift: <strong className="text-emerald-700">{rec.working_hours_per_day} hrs/day</strong>
                 </div>
               </div>
 
@@ -4328,10 +4328,10 @@ function ApproxTimeCalculatorView({ showToast }) {
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estimated Production Time</div>
                 <div className="text-sm font-black text-slate-900 mt-1">
-                  {rec.production_hours} hours
+                  {rec.total_processing_hours || rec.production_hours} hours
                 </div>
                 <div className="text-[11px] text-slate-500 mt-0.5">
-                  Includes {rec.changeover_min}m changeover from {rec.preceding_colour || 'preceding job'}
+                  {rec.batches_count} batch{rec.batches_count > 1 ? 'es' : ''} × {rec.processing_time_per_batch_hours}h + {rec.changeover_min}m changeover ({rec.working_hours_per_day}h/day shift)
                 </div>
               </div>
             </div>
@@ -4614,7 +4614,23 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
 
                 <h4 className="text-sm font-bold text-slate-900">{m.name}</h4>
                 <div className="text-[11px] text-blue-600 font-medium mt-0.5">
-                  {m.machine_type.replace('_', ' ')} • Cap: <strong>{m.max_batch_kg} kg</strong> (Min: {m.min_batch_kg}kg)
+                  {m.machine_type.replace('_', ' ')} • ID: <strong className="text-slate-800 font-mono">{m.code}</strong>
+                </div>
+
+                {/* Key Machine Parameters: Capacity, Processing Time, Working Hours */}
+                <div className="mt-2.5 p-2 bg-slate-50 rounded-lg border border-slate-200 grid grid-cols-3 gap-1.5 text-center text-xs">
+                  <div>
+                    <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Capacity</div>
+                    <div className="font-black text-slate-900 text-xs">{m.capacity_kg || m.max_batch_kg} <span className="text-[9px] font-normal text-slate-500">kg</span></div>
+                  </div>
+                  <div className="border-x border-slate-200">
+                    <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Proc Time</div>
+                    <div className="font-black text-blue-700 text-xs">{m.processing_time_hours || 3.0} <span className="text-[9px] font-normal text-slate-500">h/batch</span></div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Working</div>
+                    <div className="font-black text-emerald-700 text-xs">{m.working_hours_per_day || 8.0} <span className="text-[9px] font-normal text-slate-500">h/day</span></div>
+                  </div>
                 </div>
 
                 {/* Specs List */}
@@ -4884,6 +4900,8 @@ function AddMachineModal({ onClose, onSuccess, showToast }) {
     capacity_kg: 600,
     min_batch_kg: 100,
     max_batch_kg: 600,
+    processing_time_hours: 3.0,
+    working_hours_per_day: 8.0,
     processing_speed: 1.0,
     efficiency: 0.92,
     power_kw: 50,
@@ -4972,6 +4990,34 @@ function AddMachineModal({ onClose, onSuccess, showToast }) {
                 value={form.max_batch_kg}
                 onChange={e => setForm({ ...form, max_batch_kg: parseFloat(e.target.value) || 0, capacity_kg: parseFloat(e.target.value) || 0 })}
                 className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Processing Time per Batch (hours) *</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                required
+                value={form.processing_time_hours}
+                onChange={e => setForm({ ...form, processing_time_hours: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Working Hours (hours/day) *</label>
+              <input
+                type="number"
+                step="0.5"
+                min="1"
+                max="24"
+                required
+                value={form.working_hours_per_day}
+                onChange={e => setForm({ ...form, working_hours_per_day: parseFloat(e.target.value) || 8.0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
               />
             </div>
           </div>
@@ -5074,6 +5120,8 @@ function EditMachineModal({ machine, onClose, onSuccess, showToast }) {
     machine_type: machine.machine_type,
     max_batch_kg: machine.max_batch_kg,
     min_batch_kg: machine.min_batch_kg,
+    processing_time_hours: machine.processing_time_hours || 3.0,
+    working_hours_per_day: machine.working_hours_per_day || 8.0,
     efficiency: machine.efficiency,
     processing_speed: machine.processing_speed,
     power_kw: machine.power_kw,
@@ -5090,7 +5138,12 @@ function EditMachineModal({ machine, onClose, onSuccess, showToast }) {
       const res = await fetch(`/api/machines/${machine.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, capacity_kg: form.max_batch_kg })
+        body: JSON.stringify({
+          ...form,
+          capacity_kg: form.max_batch_kg,
+          processing_time_hours: form.processing_time_hours,
+          working_hours_per_day: form.working_hours_per_day
+        })
       });
       if (!res.ok) {
         const err = await res.json();
@@ -5129,7 +5182,7 @@ function EditMachineModal({ machine, onClose, onSuccess, showToast }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-slate-700 block mb-1">Max Batch Capacity (kg)</label>
+              <label className="text-slate-700 block mb-1 font-semibold">Max Batch Capacity (kg)</label>
               <input
                 type="number"
                 required
@@ -5139,12 +5192,40 @@ function EditMachineModal({ machine, onClose, onSuccess, showToast }) {
               />
             </div>
             <div>
-              <label className="text-slate-700 block mb-1">Min Batch (kg)</label>
+              <label className="text-slate-700 block mb-1 font-semibold">Min Batch (kg)</label>
               <input
                 type="number"
                 value={form.min_batch_kg}
                 onChange={e => setForm({ ...form, min_batch_kg: parseFloat(e.target.value) || 0 })}
                 className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Processing Time per Batch (hours) *</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                required
+                value={form.processing_time_hours}
+                onChange={e => setForm({ ...form, processing_time_hours: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Working Hours (hours/day) *</label>
+              <input
+                type="number"
+                step="0.5"
+                min="1"
+                max="24"
+                required
+                value={form.working_hours_per_day}
+                onChange={e => setForm({ ...form, working_hours_per_day: parseFloat(e.target.value) || 8.0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
               />
             </div>
           </div>

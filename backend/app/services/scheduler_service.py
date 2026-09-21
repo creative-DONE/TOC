@@ -596,7 +596,12 @@ def optimize_factory_schedule(
                 machine_efficiency=target_m.efficiency,
                 historical_calibrated_base_min=calibrated_base
             )
-            total_slot_min = proc_times["total_processing_min"]
+            if getattr(target_m, "processing_time_hours", None):
+                batch_proc_min = float(target_m.processing_time_hours) * 60.0
+                total_slot_min = batch_proc_min + changeover_min
+                proc_times["base_dye_min"] = batch_proc_min
+            else:
+                total_slot_min = proc_times["total_processing_min"]
             slot_end = slot_start + timedelta(minutes=total_slot_min)
 
             # Maintenance collision avoidance

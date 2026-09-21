@@ -75,6 +75,8 @@ class MachineCreate(BaseModel):
     capacity_kg: float
     min_batch_kg: float = 50.0
     max_batch_kg: float
+    processing_time_hours: float = 3.0 # Processing time (hours/batch)
+    working_hours_per_day: float = 8.0 # Working hours (hours/day, default 8.0)
     processing_speed: float = 1.0
     efficiency: float = 0.92
     status: str = "AVAILABLE"
@@ -90,6 +92,8 @@ class MachineUpdate(BaseModel):
     capacity_kg: Optional[float] = None
     min_batch_kg: Optional[float] = None
     max_batch_kg: Optional[float] = None
+    processing_time_hours: Optional[float] = None
+    working_hours_per_day: Optional[float] = None
     processing_speed: Optional[float] = None
     efficiency: Optional[float] = None
     status: Optional[str] = None
@@ -114,6 +118,8 @@ class MachineResponse(BaseModel):
     capacity_kg: float
     min_batch_kg: float
     max_batch_kg: float
+    processing_time_hours: Optional[float] = 3.0
+    working_hours_per_day: float = 8.0
     processing_speed: float
     efficiency: float
     status: str
@@ -347,6 +353,10 @@ class MachineEstimateDetail(BaseModel):
     is_bottleneck: bool
     current_workload_kg: float
     daily_capacity_kg: float
+    batches_count: Optional[int] = 1
+    processing_time_per_batch_hours: Optional[float] = 3.0
+    working_hours_per_day: Optional[float] = 8.0
+    total_processing_hours: Optional[float] = 3.0
     allocated_days_count: Optional[int] = 1
     preceding_colour: Optional[str] = None
     explanation: str

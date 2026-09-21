@@ -55,6 +55,8 @@ def get_machines(db: Session = Depends(get_db)):
             capacity_kg=m.capacity_kg,
             min_batch_kg=m.min_batch_kg,
             max_batch_kg=m.max_batch_kg,
+            processing_time_hours=getattr(m, 'processing_time_hours', 3.0) or 3.0,
+            working_hours_per_day=getattr(m, 'working_hours_per_day', 8.0) or 8.0,
             processing_speed=m.processing_speed,
             efficiency=m.efficiency,
             status=m.status,
@@ -96,6 +98,8 @@ def create_machine(data: MachineCreate, db: Session = Depends(get_db)):
         capacity_kg=data.capacity_kg,
         min_batch_kg=data.min_batch_kg,
         max_batch_kg=data.max_batch_kg,
+        processing_time_hours=data.processing_time_hours,
+        working_hours_per_day=data.working_hours_per_day,
         processing_speed=data.processing_speed,
         efficiency=data.efficiency,
         status=data.status,
@@ -135,6 +139,8 @@ def create_machine(data: MachineCreate, db: Session = Depends(get_db)):
         capacity_kg=new_machine.capacity_kg,
         min_batch_kg=new_machine.min_batch_kg,
         max_batch_kg=new_machine.max_batch_kg,
+        processing_time_hours=getattr(new_machine, 'processing_time_hours', 3.0) or 3.0,
+        working_hours_per_day=getattr(new_machine, 'working_hours_per_day', 8.0) or 8.0,
         processing_speed=new_machine.processing_speed,
         efficiency=new_machine.efficiency,
         status=new_machine.status,
@@ -155,7 +161,7 @@ def create_machine(data: MachineCreate, db: Session = Depends(get_db)):
 @router.put("/{machine_id}", response_model=MachineResponse)
 def update_machine(machine_id: int, data: MachineUpdate, db: Session = Depends(get_db)):
     """
-    Updates an existing machine's parameters (capacity, efficiency, speeds, cloth types, etc.).
+    Updates an existing machine's parameters (capacity, processing time, working hours, etc.).
     """
     machine = db.query(Machine).filter(Machine.id == machine_id).first()
     if not machine:
@@ -169,6 +175,12 @@ def update_machine(machine_id: int, data: MachineUpdate, db: Session = Depends(g
     db.commit()
     db.refresh(machine)
 
+    try:
+        scheduler = SchedulerService(db)
+        scheduler.generate_full_schedule()
+    except Exception as e:
+        print(f"Schedule re-optimization note on machine update: {e}")
+
     rel = machine.reliability
     nominal_weekly_kg = (machine.max_batch_kg / 3.0) * (7 * 20.0 * machine.efficiency)
     util_pct = round((machine.current_workload_kg / max(1.0, nominal_weekly_kg)) * 100.0, 1)
@@ -181,6 +193,8 @@ def update_machine(machine_id: int, data: MachineUpdate, db: Session = Depends(g
         capacity_kg=machine.capacity_kg,
         min_batch_kg=machine.min_batch_kg,
         max_batch_kg=machine.max_batch_kg,
+        processing_time_hours=getattr(machine, 'processing_time_hours', 3.0) or 3.0,
+        working_hours_per_day=getattr(machine, 'working_hours_per_day', 8.0) or 8.0,
         processing_speed=machine.processing_speed,
         efficiency=machine.efficiency,
         status=machine.status,

@@ -53,6 +53,8 @@ class Machine(Base):
     power_kw = Column(Float, default=45.0)
     water_m3_hr = Column(Float, default=3.5)
     steam_kg_hr = Column(Float, default=600.0)
+    processing_time_hours = Column(Float, nullable=True, default=3.0) # Processing time (hours/batch)
+    working_hours_per_day = Column(Float, nullable=False, default=8.0) # Working hours (hours/day, default 8.0)
     compatible_cloth_types = Column(Text, default="Cotton,Polyester,Blended fabric,Rayon Viscose")
     compatible_colours = Column(Text, default="ALL")
     current_workload_kg = Column(Float, default=0.0)
