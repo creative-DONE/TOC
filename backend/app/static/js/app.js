@@ -242,7 +242,11 @@ function App() {
         )}
 
         {activeTab === 'calculator' && (
-          <ApproxTimeCalculatorView showToast={showToast} />
+          <ApproxTimeCalculatorView
+            machines={machines}
+            onRefresh={fetchData}
+            showToast={showToast}
+          />
         )}
 
         {activeTab === 'machines' && (
@@ -4017,9 +4021,65 @@ function ScheduleTableRow({ task, onEdit, onToggleLock, onSelectOrder, isLocking
 // ============================================================================
 // APPROXIMATE TIME CALCULATOR FOR NEW ORDER VIEW
 // ============================================================================
-function ApproxTimeCalculatorView({ showToast }) {
+function ApproxTimeCalculatorView({ showToast, machines = [], onRefresh }) {
   const [quantity, setQuantity] = useState(1000);
   const [selectedColour, setSelectedColour] = useState('ROYAL_BLUE');
+  const [fleetMachines, setFleetMachines] = useState(machines || []);
+  const [editingBatchTimes, setEditingBatchTimes] = useState({});
+  const [savingMachineId, setSavingMachineId] = useState(null);
+
+  useEffect(() => {
+    if (machines && machines.length > 0) {
+      setFleetMachines(machines);
+    } else {
+      fetch('/api/machines')
+        .then(r => r.json())
+        .then(data => { if (Array.isArray(data)) setFleetMachines(data); })
+        .catch(err => console.error("Error loading machines:", err));
+    }
+  }, [machines]);
+
+  const handleBatchTimeChange = (machId, val) => {
+    setEditingBatchTimes(prev => ({ ...prev, [machId]: val }));
+  };
+
+  const handleSaveBatchTime = async (mach) => {
+    const val = parseFloat(editingBatchTimes[mach.id]);
+    if (isNaN(val) || val <= 0) {
+      if (showToast) showToast('Please enter a valid positive batch processing time in hours.', 'error');
+      return;
+    }
+    setSavingMachineId(mach.id);
+    try {
+      const res = await fetch(`/api/machines/${mach.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...mach,
+          processing_time_hours: val,
+          capacity_kg: mach.capacity_kg || mach.max_batch_kg
+        })
+      });
+      if (!res.ok) throw new Error('Failed to update machine batch time');
+      const updated = await res.json();
+      setFleetMachines(prev => prev.map(m => m.id === mach.id ? updated : m));
+      setEditingBatchTimes(prev => {
+        const next = { ...prev };
+        delete next[mach.id];
+        return next;
+      });
+      if (showToast) showToast(`✓ ${mach.code} (${mach.name}) batch time updated to ${val} hrs/batch!`);
+      if (onRefresh) onRefresh();
+      // Re-trigger calculation if user already calculated
+      if (result) {
+        handleCalculate();
+      }
+    } catch (err) {
+      if (showToast) showToast('Error saving batch time: ' + err.message, 'error');
+    } finally {
+      setSavingMachineId(null);
+    }
+  };
 
   // Initialize due date to today + 7 days
   const defaultDueDate = useMemo(() => {
@@ -4146,6 +4206,94 @@ function ApproxTimeCalculatorView({ showToast }) {
               Enter order details to estimate completion time and automatically determine the most suitable machine.
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Machine Fleet Batch Processing Times (Configurable & Modifiable) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+              <i data-lucide="clock" className="w-4 h-4 text-blue-600"></i>
+              <span>Machine Batch Processing Times (Configurable)</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+              Manually entered processing time per batch for each machine. You can modify any machine batch time below and click Save.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+              Shift: 8.0 hrs/day
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {fleetMachines.map(m => {
+            const currentVal = editingBatchTimes[m.id] !== undefined ? editingBatchTimes[m.id] : (m.processing_time_hours || 3.0);
+            const isDirty = editingBatchTimes[m.id] !== undefined && parseFloat(editingBatchTimes[m.id]) !== (m.processing_time_hours || 3.0);
+            const isSaving = savingMachineId === m.id;
+
+            return (
+              <div
+                key={m.id}
+                className={`p-3.5 rounded-xl border transition-all ${
+                  isDirty ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-200' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono font-black text-xs text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-xs">
+                    {m.code}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500">
+                    Cap: <strong className="text-slate-800">{m.capacity_kg || m.max_batch_kg} kg</strong>
+                  </span>
+                </div>
+
+                <div className="text-xs font-bold text-slate-800 truncate mb-2.5" title={m.name}>
+                  {m.name}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/80">
+                  <div className="flex-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
+                      Batch Time
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        value={currentVal}
+                        onChange={e => handleBatchTimeChange(m.id, e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg pl-2 pr-12 py-1 text-xs font-black text-blue-700 focus:border-blue-600 focus:ring-1 focus:ring-blue-300"
+                        placeholder="3.0"
+                      />
+                      <span className="absolute right-2 text-[10px] font-bold text-slate-400 pointer-events-none">
+                        h/batch
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-3.5">
+                    <button
+                      onClick={() => handleSaveBatchTime(m)}
+                      disabled={!isDirty || isSaving}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+                        isDirty
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer active:scale-95'
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+                      }`}
+                      title="Save updated batch processing time"
+                    >
+                      <i data-lucide={isSaving ? "refresh-cw" : "check"} className={`w-3 h-3 ${isSaving ? 'animate-spin' : ''}`}></i>
+                      <span>{isSaving ? 'Saving' : 'Save'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -4495,6 +4643,44 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
   const [editingMachine, setEditingMachine] = useState(null);
   const [maintainingMachine, setMaintainingMachine] = useState(null);
   const [deletingMachine, setDeletingMachine] = useState(null);
+  const [quickBatchTimes, setQuickBatchTimes] = useState({});
+  const [savingMachId, setSavingMachId] = useState(null);
+
+  const handleQuickTimeChange = (machId, val) => {
+    setQuickBatchTimes(prev => ({ ...prev, [machId]: val }));
+  };
+
+  const handleQuickSaveBatchTime = async (m) => {
+    const val = parseFloat(quickBatchTimes[m.id]);
+    if (isNaN(val) || val <= 0) {
+      if (showToast) showToast('Please enter a valid positive batch processing time in hours.', 'error');
+      return;
+    }
+    setSavingMachId(m.id);
+    try {
+      const res = await fetch(`/api/machines/${m.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...m,
+          processing_time_hours: val,
+          capacity_kg: m.capacity_kg || m.max_batch_kg
+        })
+      });
+      if (!res.ok) throw new Error('Failed to update machine batch time');
+      if (showToast) showToast(`✓ ${m.code} (${m.name}) batch time updated to ${val} hrs/batch!`);
+      setQuickBatchTimes(prev => {
+        const next = { ...prev };
+        delete next[m.id];
+        return next;
+      });
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      if (showToast) showToast('Error saving batch time: ' + err.message, 'error');
+    } finally {
+      setSavingMachId(null);
+    }
+  };
 
   // Changeover matrix filtering & testing
   const [selectedFabric, setSelectedFabric] = useState('Cotton');
@@ -4626,19 +4812,40 @@ function MachinesView({ machines, changeoverMatrix, onRefresh, showToast }) {
                   {m.machine_type.replace('_', ' ')} • ID: <strong className="text-slate-800 font-mono">{m.code}</strong>
                 </div>
 
-                {/* Key Machine Parameters: Capacity, Processing Time, Working Hours */}
-                <div className="mt-2.5 p-2 bg-slate-50 rounded-lg border border-slate-200 grid grid-cols-3 gap-1.5 text-center text-xs">
+                {/* Key Machine Parameters: Capacity, Processing Time (Modifiable), Working Hours */}
+                <div className="mt-2.5 p-2 bg-slate-50 rounded-lg border border-slate-200 grid grid-cols-3 gap-1 text-center text-xs">
                   <div>
                     <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Capacity</div>
-                    <div className="font-black text-slate-900 text-xs">{m.capacity_kg || m.max_batch_kg} <span className="text-[9px] font-normal text-slate-500">kg</span></div>
+                    <div className="font-black text-slate-900 text-xs mt-1">{m.capacity_kg || m.max_batch_kg} <span className="text-[9px] font-normal text-slate-500">kg</span></div>
                   </div>
-                  <div className="border-x border-slate-200">
-                    <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Proc Time</div>
-                    <div className="font-black text-blue-700 text-xs">{m.processing_time_hours || 3.0} <span className="text-[9px] font-normal text-slate-500">h/batch</span></div>
+                  <div className="border-x border-slate-200 px-0.5">
+                    <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Batch Time</div>
+                    <div className="flex items-center justify-center gap-0.5 mt-0.5">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        value={quickBatchTimes[m.id] !== undefined ? quickBatchTimes[m.id] : (m.processing_time_hours || 3.0)}
+                        onChange={e => handleQuickTimeChange(m.id, e.target.value)}
+                        className="w-11 text-center font-black text-blue-700 text-xs bg-white border border-slate-300 rounded px-0.5 py-0.5 focus:border-blue-600 focus:ring-1 focus:ring-blue-200"
+                        title="Edit Batch Processing Time (hours/batch)"
+                      />
+                      <span className="text-[9px] font-bold text-slate-400">h</span>
+                      {quickBatchTimes[m.id] !== undefined && parseFloat(quickBatchTimes[m.id]) !== (m.processing_time_hours || 3.0) && (
+                        <button
+                          onClick={() => handleQuickSaveBatchTime(m)}
+                          disabled={savingMachId === m.id}
+                          className="px-1 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold shadow transition-all cursor-pointer"
+                          title="Save Batch Time"
+                        >
+                          {savingMachId === m.id ? '..' : '✓'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div>
-                    <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Working</div>
-                    <div className="font-black text-emerald-700 text-xs">{m.working_hours_per_day || 8.0} <span className="text-[9px] font-normal text-slate-500">h/day</span></div>
+                    <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Work Shift</div>
+                    <div className="font-black text-emerald-700 text-xs mt-1">{m.working_hours_per_day || 8.0} <span className="text-[9px] font-normal text-slate-500">h/day</span></div>
                   </div>
                 </div>
 
