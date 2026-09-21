@@ -321,3 +321,49 @@ class DashboardOverviewResponse(BaseModel):
     total_operating_cost_inr: float
     bottleneck_info: TOCBottleneckResponse
     active_alerts: List[Dict[str, Any]]
+
+# Approx Time Calculator Schemas
+class ApproxTimeCalculatorRequest(BaseModel):
+    quantity_kg: float
+    colour_code: str
+    due_date: datetime
+    cloth_type: Optional[str] = "Cotton"
+
+class MachineEstimateDetail(BaseModel):
+    machine_id: int
+    machine_code: str
+    machine_name: str
+    machine_type: str
+    is_suitable: bool
+    unsuitability_reason: Optional[str] = None
+    estimated_start: Optional[datetime] = None
+    estimated_completion: Optional[datetime] = None
+    production_hours: Optional[float] = None
+    changeover_min: Optional[float] = None
+    is_on_time: bool
+    delay_hours: float = 0.0
+    slack_hours: Optional[float] = 0.0
+    due_status: str
+    is_bottleneck: bool
+    current_workload_kg: float
+    daily_capacity_kg: float
+    allocated_days_count: Optional[int] = 1
+    preceding_colour: Optional[str] = None
+    explanation: str
+
+class ApproxTimeCalculatorResponse(BaseModel):
+    status: str
+    recommended_machine: Optional[MachineEstimateDetail] = None
+    order_quantity_kg: float
+    colour_name: str
+    colour_code: str
+    colour_hex: Optional[str] = "#2563EB"
+    due_date: datetime
+    is_any_machine_on_time: bool
+    earliest_completion: Optional[datetime] = None
+    total_delay_hours: float = 0.0
+    why_recommended: str
+    due_date_risk_warning: Optional[str] = None
+    risk_factors: List[str] = []
+    alternative_machines: List[MachineEstimateDetail] = []
+

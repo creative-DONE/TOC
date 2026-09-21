@@ -6,9 +6,13 @@ from app.db.database import get_db
 from app.models.schedule_models import ProductionSchedule, ScheduleQualityScoreLog
 from app.models.factory_models import Machine, Colour, ChangeoverMatrixItem, MachineMaintenance, FactoryUtility, Employee
 from app.models.order_models import Order
-from app.schemas.schemas import ScheduleSlotResponse, QualityScoreResponse, OrderCreate, ScheduleSlotUpdateRequest, MatrixEditRequest
+from app.schemas.schemas import (
+    ScheduleSlotResponse, QualityScoreResponse, OrderCreate, ScheduleSlotUpdateRequest, MatrixEditRequest,
+    ApproxTimeCalculatorRequest, ApproxTimeCalculatorResponse
+)
 from app.services.scheduler_service import SchedulerService
 from app.services.matrix_service import get_planning_matrix_data, execute_matrix_action
+from app.services.order_calculator_service import calculate_order_time_estimate
 from app.core.changeover import calculate_changeover_penalty
 from app.core.rush_insertion import evaluate_rush_order_insertion
 from app.core.hierarchy import filter_schedule_by_tier
@@ -742,4 +746,47 @@ def edit_production_planning_matrix(
     if not result.get("success") and not result.get("conflict"):
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to execute matrix edit"))
     return result
+
+@router.get("/available-colours")
+def get_available_colours(db: Session = Depends(get_db)):
+    """
+    Retrieves all available factory colors for the time calculator and order management.
+    """
+    colours = db.query(Colour).order_by(Colour.id.asc()).all()
+    return [
+        {
+            "id": c.id,
+            "code": c.code,
+            "name": c.name,
+            "hex_code": c.hex_code,
+            "shade_depth": c.shade_depth
+        }
+        for c in colours
+    ]
+
+@router.post("/approx-time-calculator", response_model=ApproxTimeCalculatorResponse)
+def approx_time_calculator(
+    req: ApproxTimeCalculatorRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Approximate Time Calculator for New Order:
+    User inputs ONLY: Order Quantity, Color, and Required Due Date.
+    System automatically selects the optimal machine and calculates completion time,
+    changeovers, and TOC constraints without modifying the schedule.
+    """
+    if req.quantity_kg <= 0:
+        raise HTTPException(status_code=422, detail="Order quantity must be greater than 0 kg.")
+
+    res = calculate_order_time_estimate(
+        db=db,
+        quantity_kg=req.quantity_kg,
+        colour_code=req.colour_code,
+        due_date=req.due_date,
+        cloth_type=req.cloth_type or "Cotton"
+    )
+    if res.get("status") == "ERROR":
+        raise HTTPException(status_code=400, detail=res.get("message", "Error calculating order estimate."))
+    return res
+
 

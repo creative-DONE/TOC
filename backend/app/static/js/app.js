@@ -181,6 +181,7 @@ function App() {
         {[
           { id: 'dashboard', label: 'TOC Command Center', icon: 'activity' },
           { id: 'agenda', label: 'Daily Production Agenda', icon: 'clipboard-list' },
+          { id: 'calculator', label: 'Approx Time Calculator', icon: 'calculator' },
           { id: 'machines', label: 'Machines & Changeover Matrix', icon: 'cpu' },
           { id: 'disruptions', label: 'Disruption Event Simulator', icon: 'alert-triangle' },
           { id: 'whatif', label: 'What-If Scenario Sandbox', icon: 'git-branch' }
@@ -227,7 +228,9 @@ function App() {
           />
         )}
 
-
+        {activeTab === 'calculator' && (
+          <ApproxTimeCalculatorView showToast={showToast} />
+        )}
 
         {activeTab === 'machines' && (
           <MachinesView
@@ -3989,6 +3992,472 @@ function ScheduleTableRow({ task, onEdit, onToggleLock, onSelectOrder, isLocking
         </div>
       </td>
     </tr>
+  );
+}
+
+// ============================================================================
+// APPROXIMATE TIME CALCULATOR FOR NEW ORDER VIEW
+// ============================================================================
+function ApproxTimeCalculatorView({ showToast }) {
+  const [quantity, setQuantity] = useState(1000);
+  const [selectedColour, setSelectedColour] = useState('ROYAL_BLUE');
+
+  // Initialize due date to today + 7 days
+  const defaultDueDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split('T')[0];
+  }, []);
+  const [dueDate, setDueDate] = useState(defaultDueDate);
+
+  const [colours, setColours] = useState([
+    { code: 'WHITE', name: 'Bleached Optical White', hex_code: '#FFFFFF', shade_depth: 'LIGHT' },
+    { code: 'PASTEL_PINK', name: 'Pastel Rose Pink', hex_code: '#FFB6C1', shade_depth: 'LIGHT' },
+    { code: 'SKY_BLUE', name: 'Sky Aqua Blue', hex_code: '#87CEEB', shade_depth: 'LIGHT' },
+    { code: 'GOLDEN_YELLOW', name: 'Golden Sun Yellow', hex_code: '#FFD700', shade_depth: 'MEDIUM' },
+    { code: 'ROYAL_BLUE', name: 'Vibrant Royal Blue', hex_code: '#4169E1', shade_depth: 'MEDIUM' },
+    { code: 'SCARLET_RED', name: 'Scarlet Crimson Red', hex_code: '#FF2400', shade_depth: 'MEDIUM' },
+    { code: 'EMERALD_GREEN', name: 'Emerald Olive Green', hex_code: '#2E8B57', shade_depth: 'MEDIUM' },
+    { code: 'DEEP_NAVY', name: 'Deep Midnight Navy', hex_code: '#000080', shade_depth: 'DARK' },
+    { code: 'JET_BLACK', name: 'Intense Jet Black', hex_code: '#111111', shade_depth: 'DARK' }
+  ]);
+
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/schedule/available-colours')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setColours(data);
+        }
+      })
+      .catch(err => console.error("Error fetching colours:", err));
+  }, []);
+
+  useEffect(() => {
+    if (window.lucide) window.lucide.createIcons();
+  }, [result, loading]);
+
+  const handleCalculate = async () => {
+    const qtyNum = parseFloat(quantity);
+    if (isNaN(qtyNum) || qtyNum <= 0) {
+      if (showToast) showToast('Order Quantity must be greater than 0 kg.', 'error');
+      return;
+    }
+    if (!dueDate) {
+      if (showToast) showToast('Please select a required due date.', 'error');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const dueDateIso = new Date(dueDate + 'T23:59:59').toISOString();
+      const res = await fetch('/api/schedule/approx-time-calculator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quantity_kg: qtyNum,
+          colour_code: selectedColour,
+          due_date: dueDateIso,
+          cloth_type: 'Cotton'
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Failed to calculate completion time.');
+      }
+
+      const data = await res.json();
+      setResult(data);
+      if (showToast) showToast('Calculation complete! Recommended machine identified.');
+    } catch (err) {
+      setErrorMsg(err.message);
+      if (showToast) showToast('Calculator error: ' + err.message, 'error');
+    } finally {
+      setLoading(false);
+      setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50);
+    }
+  };
+
+  const formatDateTime = (isoStr) => {
+    if (!isoStr) return '--';
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    }) + ', ' + d.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const formatDate = (isoStr) => {
+    if (!isoStr) return '--';
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
+
+  const rec = result ? result.recommended_machine : null;
+  const currentColourObj = colours.find(c => c.code === selectedColour) || colours[0];
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+      {/* 1. Page Title & Subtitle */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs">
+            <i data-lucide="calculator" className="w-6 h-6"></i>
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 tracking-tight">
+              Approximate Time Calculator for New Order
+            </h1>
+            <p className="text-xs text-slate-500 mt-1 font-medium">
+              Enter order details to estimate completion time and automatically determine the most suitable machine.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. User Inputs Card */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+            <i data-lucide="sliders" className="w-3.5 h-3.5 text-blue-600"></i>
+            <span>Order Parameters</span>
+          </div>
+          <span className="text-[11px] text-slate-400 font-medium">
+            System automatically selects the optimal machine based on capacity &amp; schedule
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Input A: Order Quantity */}
+          <div>
+            <label className="block text-xs font-bold text-slate-800 mb-1.5">
+              Order Quantity
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="1"
+                step="10"
+                value={quantity}
+                onChange={e => setQuantity(e.target.value)}
+                placeholder="1000"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:ring-3 focus:ring-blue-100 transition-all"
+              />
+              <span className="absolute right-3.5 top-2.5 text-xs font-bold text-slate-500 pointer-events-none">
+                kg
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">Must be greater than 0 kg</p>
+          </div>
+
+          {/* Input B: Color */}
+          <div>
+            <label className="block text-xs font-bold text-slate-800 mb-1.5">
+              Color
+            </label>
+            <div className="relative">
+              <select
+                value={selectedColour}
+                onChange={e => setSelectedColour(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:ring-3 focus:ring-blue-100 transition-all"
+              >
+                {colours.map(c => (
+                  <option key={c.code} value={c.code} className="text-slate-900 bg-white font-medium">
+                    {c.name} ({c.code.replace('_', ' ')})
+                  </option>
+                ))}
+              </select>
+              <div
+                className="w-4 h-4 rounded-full border border-slate-300 absolute left-3 top-3"
+                style={{ backgroundColor: currentColourObj ? currentColourObj.hex_code : '#3b82f6' }}
+              ></div>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">Affects sequence changeover &amp; cleaning time</p>
+          </div>
+
+          {/* Input C: Required Due Date */}
+          <div>
+            <label className="block text-xs font-bold text-slate-800 mb-1.5">
+              Required Due Date
+            </label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:ring-3 focus:ring-blue-100 transition-all"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">Target delivery deadline</p>
+          </div>
+        </div>
+
+        {/* 3. Main Button */}
+        <div className="pt-3 flex justify-center">
+          <button
+            onClick={handleCalculate}
+            disabled={loading}
+            className="flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 hover:shadow-lg active:scale-[0.99] cursor-pointer"
+          >
+            <i data-lucide={loading ? "refresh-cw" : "calculator"} className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}></i>
+            <span>{loading ? "Analyzing Factory Capacities & Schedules..." : "Calculate Approximate Completion Time"}</span>
+          </button>
+        </div>
+
+        {errorMsg && (
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-700 flex items-center gap-2">
+            <i data-lucide="alert-circle" className="w-4 h-4"></i>
+            <span>{errorMsg}</span>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Result Card */}
+      {result && rec && (
+        <div className="space-y-6">
+          {/* Main Prominent Result Card */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">Approximate Order Completion</h2>
+                <p className="text-xs text-slate-400 font-medium">Evaluated against active fleet, current queues, and TOC constraints</p>
+              </div>
+
+              {/* Order Chips */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-3 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700 border border-blue-200">
+                  {result.order_quantity_kg} kg
+                </span>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full border border-slate-400" style={{ backgroundColor: result.colour_hex || '#3b82f6' }}></span>
+                  <span>{result.colour_name}</span>
+                </span>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  Due: {formatDate(result.due_date)}
+                </span>
+              </div>
+            </div>
+
+            {/* Recommended Machine Banner */}
+            <div className="p-5 rounded-xl bg-gradient-to-r from-blue-50 via-indigo-50/50 to-slate-50 border border-blue-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-wider text-blue-700">
+                  Recommended Machine
+                </div>
+                <div className="text-lg font-black text-slate-900 mt-0.5 flex items-center gap-2">
+                  <span>{rec.machine_name}</span>
+                  <span className="px-2 py-0.5 rounded-md text-xs font-mono font-black bg-blue-600 text-white">
+                    {rec.machine_code}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500 font-semibold mt-1">
+                  Type: {rec.machine_type} • Daily Capacity: {rec.daily_capacity_kg} kg/day
+                </div>
+              </div>
+
+              {/* Due Date Status Badge */}
+              <div>
+                {rec.is_on_time ? (
+                  <div className="px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-black flex items-center gap-2 shadow-xs">
+                    <i data-lucide="check-circle" className="w-4 h-4 text-emerald-600"></i>
+                    <span>✓ Expected to complete before due date ({rec.slack_hours}h safety buffer)</span>
+                  </div>
+                ) : (
+                  <div className="px-4 py-2.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-black flex items-center gap-2 shadow-xs">
+                    <i data-lucide="alert-triangle" className="w-4 h-4 text-rose-600"></i>
+                    <span>⚠️ Due Date Risk: Expected to complete {rec.delay_hours}h after required deadline</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 3 Metrics Cards: Start, Completion, Duration */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estimated Start</div>
+                <div className="text-sm font-black text-slate-900 mt-1">
+                  {formatDateTime(rec.estimated_start)}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  After shift opening &amp; preceding queue
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estimated Completion</div>
+                <div className="text-sm font-black text-blue-700 mt-1">
+                  {formatDateTime(rec.estimated_completion)}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Final batch completion &amp; inspection
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estimated Production Time</div>
+                <div className="text-sm font-black text-slate-900 mt-1">
+                  {rec.production_hours} hours
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Includes {rec.changeover_min}m changeover from {rec.preceding_colour || 'preceding job'}
+                </div>
+              </div>
+            </div>
+
+            {/* Why This Machine Card */}
+            <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 space-y-1.5">
+              <div className="text-xs font-black uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
+                <i data-lucide="info" className="w-3.5 h-3.5 text-blue-600"></i>
+                <span>Why this machine?</span>
+              </div>
+              <p className="text-xs text-slate-700 font-medium leading-relaxed">
+                {result.why_recommended}
+              </p>
+            </div>
+
+            {/* Due Date Risk Alert Panel (if no machine meets due date or recommended is late) */}
+            {(!result.is_any_machine_on_time || !rec.is_on_time) && (
+              <div className="p-5 rounded-xl bg-rose-50 border border-rose-300 space-y-3">
+                <div className="flex items-center gap-2 text-rose-900 font-black text-sm">
+                  <i data-lucide="alert-octagon" className="w-5 h-5 text-rose-600"></i>
+                  <span>Due Date Risk Notice</span>
+                </div>
+                <p className="text-xs text-rose-800 font-semibold leading-relaxed">
+                  {result.due_date_risk_warning || `No machine can meet the deadline. Expected delay: ${rec.delay_hours} hours.`}
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="bg-white/80 p-3 rounded-lg border border-rose-200">
+                    <div className="text-[10px] font-bold uppercase text-slate-500">Earliest Possible Completion</div>
+                    <div className="text-xs font-black text-slate-900 mt-0.5">
+                      {formatDateTime(result.earliest_completion || rec.estimated_completion)}
+                    </div>
+                  </div>
+                  <div className="bg-white/80 p-3 rounded-lg border border-rose-200">
+                    <div className="text-[10px] font-bold uppercase text-slate-500">Required Due Date</div>
+                    <div className="text-xs font-black text-slate-900 mt-0.5">
+                      {formatDate(result.due_date)}
+                    </div>
+                  </div>
+                  <div className="bg-white/80 p-3 rounded-lg border border-rose-200">
+                    <div className="text-[10px] font-bold uppercase text-rose-600">Estimated Delay</div>
+                    <div className="text-xs font-black text-rose-700 mt-0.5">
+                      {rec.delay_hours} hours
+                    </div>
+                  </div>
+                </div>
+
+                {result.risk_factors && result.risk_factors.length > 0 && (
+                  <div className="pt-2 border-t border-rose-200">
+                    <div className="text-[11px] font-bold text-rose-900 mb-1.5">Identified Scheduling Constraints:</div>
+                    <ul className="space-y-1">
+                      {result.risk_factors.map((rf, idx) => (
+                        <li key={idx} className="text-xs text-rose-800 flex items-start gap-1.5">
+                          <span className="text-rose-500 font-bold">•</span>
+                          <span>{rf}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 5. Alternative Machines Comparison Table */}
+          {result.alternative_machines && result.alternative_machines.length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">Alternative Machine Comparison</h3>
+                  <p className="text-xs text-slate-400 font-medium">Transparent evaluation across other operational vessels in the plant</p>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">
+                  {result.alternative_machines.length} alternative vessels
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">Machine</th>
+                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4 text-right">Daily Cap</th>
+                      <th className="py-3 px-4 text-center">Changeover</th>
+                      <th className="py-3 px-4">Estimated Completion</th>
+                      <th className="py-3 px-4 text-center">Due Date Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {result.alternative_machines.map((alt, i) => (
+                      <tr key={i} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-900">{alt.machine_name}</div>
+                          <div className="text-[10px] font-mono text-slate-400 font-semibold">{alt.machine_code}</div>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">
+                          {alt.machine_type}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                          {alt.daily_capacity_kg} kg
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {alt.changeover_min !== null ? (
+                            <div>
+                              <span className="font-bold text-slate-800">{alt.changeover_min} min</span>
+                              <div className="text-[10px] text-slate-400">from {alt.preceding_colour || 'prev'}</div>
+                            </div>
+                          ) : '--'}
+                        </td>
+                        <td className="py-3 px-4">
+                          {alt.estimated_completion ? (
+                            <div>
+                              <div className="font-bold text-slate-900">{formatDateTime(alt.estimated_completion)}</div>
+                              <div className="text-[10px] text-slate-400 font-medium">{alt.production_hours}h duration</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">{alt.unsuitability_reason || 'Not suitable'}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {!alt.is_suitable ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                              Incompatible
+                            </span>
+                          ) : alt.is_on_time ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-300 inline-flex items-center gap-1">
+                              <span>✓</span> On Time
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-300 inline-flex items-center gap-1">
+                              <span>❌</span> Late (+{alt.delay_hours}h)
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
