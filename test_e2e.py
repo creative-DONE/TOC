@@ -174,6 +174,8 @@ def test_all_endpoints():
         "maintenance_type": "PREVENTIVE",
         "notes": "Routine servicing"
     })
+    if res_maint.status_code != 200:
+        print("MAINT ERROR:", res_maint.status_code, res_maint.text)
     assert res_maint.status_code == 200
     assert res_maint.json()["hours"] == 4.5
     print(f"  [PASS] POST /api/machines/{m_id}/maintenance (4.5h maintenance scheduled, jobs rescheduled)")

@@ -4162,7 +4162,7 @@ function ApproxTimeCalculatorView({ showToast, machines = [], onRefresh }) {
   const [quantity, setQuantity] = useState(1000);
   const [selectedColour, setSelectedColour] = useState('ROYAL_BLUE');
   const [fleetMachines, setFleetMachines] = useState(machines || []);
-  const [editingBatchTimes, setEditingBatchTimes] = useState({});
+  const [editingParams, setEditingParams] = useState({});
   const [savingMachineId, setSavingMachineId] = useState(null);
 
   useEffect(() => {
@@ -4176,16 +4176,28 @@ function ApproxTimeCalculatorView({ showToast, machines = [], onRefresh }) {
     }
   }, [machines]);
 
-  const handleBatchTimeChange = (machId, val) => {
-    setEditingBatchTimes(prev => ({ ...prev, [machId]: val }));
+  const handleParamChange = (machId, field, val) => {
+    setEditingParams(prev => ({
+      ...prev,
+      [machId]: {
+        ...(prev[machId] || {}),
+        [field]: val
+      }
+    }));
   };
 
-  const handleSaveBatchTime = async (mach) => {
-    const val = parseFloat(editingBatchTimes[mach.id]);
-    if (isNaN(val) || val <= 0) {
-      if (showToast) showToast('Please enter a valid positive batch processing time in hours.', 'error');
+  const handleSaveMachineTimes = async (mach) => {
+    const p = editingParams[mach.id] || {};
+    const proc = parseFloat(p.processing_time_hours !== undefined ? p.processing_time_hours : mach.processing_time_hours) || 3.0;
+    const loading = parseFloat(p.loading_time_hours !== undefined ? p.loading_time_hours : (mach.loading_time_hours || 0.5)) || 0.5;
+    const unloading = parseFloat(p.unloading_time_hours !== undefined ? p.unloading_time_hours : (mach.unloading_time_hours || 0.5)) || 0.5;
+    const cleaning = parseFloat(p.cleaning_time_hours !== undefined ? p.cleaning_time_hours : (mach.cleaning_time_hours || 1.0)) || 1.0;
+
+    if (proc <= 0 || loading < 0 || unloading < 0 || cleaning < 0) {
+      if (showToast) showToast('Please enter valid positive production time parameters.', 'error');
       return;
     }
+
     setSavingMachineId(mach.id);
     try {
       const res = await fetch(`/api/machines/${mach.id}`, {
@@ -4193,26 +4205,29 @@ function ApproxTimeCalculatorView({ showToast, machines = [], onRefresh }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...mach,
-          processing_time_hours: val,
+          processing_time_hours: proc,
+          loading_time_hours: loading,
+          unloading_time_hours: unloading,
+          cleaning_time_hours: cleaning,
           capacity_kg: mach.capacity_kg || mach.max_batch_kg
         })
       });
-      if (!res.ok) throw new Error('Failed to update machine batch time');
+      if (!res.ok) throw new Error('Failed to update machine parameters');
       const updated = await res.json();
       setFleetMachines(prev => prev.map(m => m.id === mach.id ? updated : m));
-      setEditingBatchTimes(prev => {
+      setEditingParams(prev => {
         const next = { ...prev };
         delete next[mach.id];
         return next;
       });
-      if (showToast) showToast(`✓ ${mach.code} (${mach.name}) batch time updated to ${val} hrs/batch!`);
+      if (showToast) showToast(`✓ ${mach.code} (${mach.name}) time parameters updated!`);
       if (onRefresh) onRefresh();
       // Re-trigger calculation if user already calculated
       if (result) {
         handleCalculate();
       }
     } catch (err) {
-      if (showToast) showToast('Error saving batch time: ' + err.message, 'error');
+      if (showToast) showToast('Error saving parameters: ' + err.message, 'error');
     } finally {
       setSavingMachineId(null);
     }
@@ -4346,29 +4361,39 @@ function ApproxTimeCalculatorView({ showToast, machines = [], onRefresh }) {
         </div>
       </div>
 
-      {/* Machine Fleet Batch Processing Times (Configurable & Modifiable) */}
+      {/* Machine Fleet Real Production Time Parameters (Configurable & Modifiable) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div>
             <div className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
               <i data-lucide="clock" className="w-4 h-4 text-blue-600"></i>
-              <span>Machine Batch Processing Times (Configurable)</span>
+              <span>Machine Real Production Time Parameters (Configurable)</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              Manually entered processing time per batch for each machine. You can modify any machine batch time below and click Save.
+              Manually enter Loading, Processing, Unloading, and Cleaning times for each machine. Modifying any value recalculates schedule estimates.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              Shift: 8.0 hrs/day
+              Shift: 8.0 hrs/day (08:00 - 16:00)
             </span>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {fleetMachines.map(m => {
-            const currentVal = editingBatchTimes[m.id] !== undefined ? editingBatchTimes[m.id] : (m.processing_time_hours || 3.0);
-            const isDirty = editingBatchTimes[m.id] !== undefined && parseFloat(editingBatchTimes[m.id]) !== (m.processing_time_hours || 3.0);
+            const p = editingParams[m.id] || {};
+            const curProc = p.processing_time_hours !== undefined ? p.processing_time_hours : (m.processing_time_hours || 3.0);
+            const curLoad = p.loading_time_hours !== undefined ? p.loading_time_hours : (m.loading_time_hours || 0.5);
+            const curUnload = p.unloading_time_hours !== undefined ? p.unloading_time_hours : (m.unloading_time_hours || 0.5);
+            const curClean = p.cleaning_time_hours !== undefined ? p.cleaning_time_hours : (m.cleaning_time_hours || 1.0);
+
+            const isDirty = (
+              (p.processing_time_hours !== undefined && parseFloat(p.processing_time_hours) !== (m.processing_time_hours || 3.0)) ||
+              (p.loading_time_hours !== undefined && parseFloat(p.loading_time_hours) !== (m.loading_time_hours || 0.5)) ||
+              (p.unloading_time_hours !== undefined && parseFloat(p.unloading_time_hours) !== (m.unloading_time_hours || 0.5)) ||
+              (p.cleaning_time_hours !== undefined && parseFloat(p.cleaning_time_hours) !== (m.cleaning_time_hours || 1.0))
+            );
             const isSaving = savingMachineId === m.id;
 
             return (
@@ -4387,41 +4412,72 @@ function ApproxTimeCalculatorView({ showToast, machines = [], onRefresh }) {
                   </span>
                 </div>
 
-                <div className="text-xs font-bold text-slate-800 truncate mb-2.5" title={m.name}>
+                <div className="text-xs font-bold text-slate-800 truncate mb-2" title={m.name}>
                   {m.name}
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/80">
-                  <div className="flex-1">
-                    <label className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
-                      Batch Time
-                    </label>
-                    <div className="relative flex items-center">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0.1"
-                        value={currentVal}
-                        onChange={e => handleBatchTimeChange(m.id, e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg pl-2 pr-12 py-1 text-xs font-black text-blue-700 focus:border-blue-600 focus:ring-1 focus:ring-blue-300"
-                        placeholder="3.0"
-                      />
-                      <span className="absolute right-2 text-[10px] font-bold text-slate-400 pointer-events-none">
-                        h/batch
-                      </span>
+                <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    <div>
+                      <label className="text-[9px] uppercase font-bold text-slate-500 block">Batch (Proc) Time</label>
+                      <div className="relative flex items-center mt-0.5">
+                        <input
+                          type="number" step="0.1" min="0.1"
+                          value={curProc}
+                          onChange={e => handleParamChange(m.id, 'processing_time_hours', e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-bold text-blue-700"
+                        />
+                        <span className="text-[9px] text-slate-400 ml-1">h</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] uppercase font-bold text-slate-500 block">Loading Time</label>
+                      <div className="relative flex items-center mt-0.5">
+                        <input
+                          type="number" step="0.1" min="0.0"
+                          value={curLoad}
+                          onChange={e => handleParamChange(m.id, 'loading_time_hours', e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-bold text-slate-700"
+                        />
+                        <span className="text-[9px] text-slate-400 ml-1">h</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] uppercase font-bold text-slate-500 block">Unloading Time</label>
+                      <div className="relative flex items-center mt-0.5">
+                        <input
+                          type="number" step="0.1" min="0.0"
+                          value={curUnload}
+                          onChange={e => handleParamChange(m.id, 'unloading_time_hours', e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-bold text-slate-700"
+                        />
+                        <span className="text-[9px] text-slate-400 ml-1">h</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] uppercase font-bold text-slate-500 block">Cleaning Time</label>
+                      <div className="relative flex items-center mt-0.5">
+                        <input
+                          type="number" step="0.1" min="0.0"
+                          value={curClean}
+                          onChange={e => handleParamChange(m.id, 'cleaning_time_hours', e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-bold text-slate-700"
+                        />
+                        <span className="text-[9px] text-slate-400 ml-1">h</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="pt-3.5">
+                  <div className="flex justify-end pt-1">
                     <button
-                      onClick={() => handleSaveBatchTime(m)}
+                      onClick={() => handleSaveMachineTimes(m)}
                       disabled={!isDirty || isSaving}
                       className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
                         isDirty
                           ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer active:scale-95'
                           : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
                       }`}
-                      title="Save updated batch processing time"
+                      title="Save production time parameters"
                     >
                       <i data-lucide={isSaving ? "refresh-cw" : "check"} className={`w-3 h-3 ${isSaving ? 'animate-spin' : ''}`}></i>
                       <span>{isSaving ? 'Saving' : 'Save'}</span>
@@ -4615,8 +4671,11 @@ function ApproxTimeCalculatorView({ showToast, machines = [], onRefresh }) {
                 <div className="text-sm font-black text-slate-900 mt-1">
                   {rec.total_processing_hours || rec.production_hours} hours
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
-                  {rec.batches_count} batch{rec.batches_count > 1 ? 'es' : ''} × {rec.processing_time_per_batch_hours}h + {rec.changeover_min}m changeover ({rec.working_hours_per_day}h/day shift)
+                <div className="text-[11px] text-slate-500 mt-0.5 space-y-0.5">
+                  <div>{rec.batches_count} batch{rec.batches_count > 1 ? 'es' : ''} • Cap: {rec.daily_capacity_kg} kg/batch</div>
+                  <div className="text-[10px] text-slate-600 font-medium">
+                    Load: {rec.loading_time_hours || 0.5}h | Proc: {rec.processing_time_per_batch_hours}h | Unload: {rec.unloading_time_hours || 0.5}h | Clean: {rec.cleaning_time_hours || 0.0}h
+                  </div>
                 </div>
               </div>
             </div>
@@ -5254,6 +5313,9 @@ function AddMachineModal({ onClose, onSuccess, showToast }) {
     min_batch_kg: 100,
     max_batch_kg: 600,
     processing_time_hours: 3.0,
+    loading_time_hours: 0.5,
+    unloading_time_hours: 0.5,
+    cleaning_time_hours: 1.0,
     working_hours_per_day: 8.0,
     processing_speed: 1.0,
     efficiency: 0.92,
@@ -5377,6 +5439,45 @@ function AddMachineModal({ onClose, onSuccess, showToast }) {
 
           <div className="grid grid-cols-3 gap-3">
             <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Loading Time (hr) *</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.0"
+                required
+                value={form.loading_time_hours}
+                onChange={e => setForm({ ...form, loading_time_hours: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Unloading Time (hr) *</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.0"
+                required
+                value={form.unloading_time_hours}
+                onChange={e => setForm({ ...form, unloading_time_hours: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Cleaning Time (hr) *</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.0"
+                required
+                value={form.cleaning_time_hours}
+                onChange={e => setForm({ ...form, cleaning_time_hours: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
               <label className="text-slate-700 block mb-1">Min Batch (kg)</label>
               <input
                 type="number"
@@ -5474,6 +5575,9 @@ function EditMachineModal({ machine, onClose, onSuccess, showToast }) {
     max_batch_kg: machine.max_batch_kg,
     min_batch_kg: machine.min_batch_kg,
     processing_time_hours: machine.processing_time_hours || 3.0,
+    loading_time_hours: machine.loading_time_hours !== undefined ? machine.loading_time_hours : 0.5,
+    unloading_time_hours: machine.unloading_time_hours !== undefined ? machine.unloading_time_hours : 0.5,
+    cleaning_time_hours: machine.cleaning_time_hours !== undefined ? machine.cleaning_time_hours : 1.0,
     working_hours_per_day: machine.working_hours_per_day || 8.0,
     efficiency: machine.efficiency,
     processing_speed: machine.processing_speed,
@@ -5495,6 +5599,9 @@ function EditMachineModal({ machine, onClose, onSuccess, showToast }) {
           ...form,
           capacity_kg: form.max_batch_kg,
           processing_time_hours: form.processing_time_hours,
+          loading_time_hours: form.loading_time_hours,
+          unloading_time_hours: form.unloading_time_hours,
+          cleaning_time_hours: form.cleaning_time_hours,
           working_hours_per_day: form.working_hours_per_day
         })
       });
@@ -5578,6 +5685,45 @@ function EditMachineModal({ machine, onClose, onSuccess, showToast }) {
                 required
                 value={form.working_hours_per_day}
                 onChange={e => setForm({ ...form, working_hours_per_day: parseFloat(e.target.value) || 8.0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Loading Time (hr) *</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.0"
+                required
+                value={form.loading_time_hours}
+                onChange={e => setForm({ ...form, loading_time_hours: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Unloading Time (hr) *</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.0"
+                required
+                value={form.unloading_time_hours}
+                onChange={e => setForm({ ...form, unloading_time_hours: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-slate-700 block mb-1 font-semibold">Cleaning Time (hr) *</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.0"
+                required
+                value={form.cleaning_time_hours}
+                onChange={e => setForm({ ...form, cleaning_time_hours: parseFloat(e.target.value) || 0 })}
                 className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-bold"
               />
             </div>

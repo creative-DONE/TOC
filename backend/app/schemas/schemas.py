@@ -77,6 +77,9 @@ class MachineCreate(BaseModel):
     min_batch_kg: float = 50.0
     max_batch_kg: float
     processing_time_hours: float = 3.0 # Processing time (hours/batch)
+    loading_time_hours: float = 0.5    # Loading time (hours/batch)
+    unloading_time_hours: float = 0.5  # Unloading time (hours/batch)
+    cleaning_time_hours: float = 1.0   # Cleaning time (hours)
     working_hours_per_day: float = 8.0 # Working hours (hours/day, default 8.0)
     processing_speed: float = 1.0
     efficiency: float = 0.92
@@ -94,6 +97,9 @@ class MachineUpdate(BaseModel):
     min_batch_kg: Optional[float] = None
     max_batch_kg: Optional[float] = None
     processing_time_hours: Optional[float] = None
+    loading_time_hours: Optional[float] = None
+    unloading_time_hours: Optional[float] = None
+    cleaning_time_hours: Optional[float] = None
     working_hours_per_day: Optional[float] = None
     processing_speed: Optional[float] = None
     efficiency: Optional[float] = None
@@ -120,6 +126,9 @@ class MachineResponse(BaseModel):
     min_batch_kg: float
     max_batch_kg: float
     processing_time_hours: Optional[float] = 3.0
+    loading_time_hours: float = 0.5
+    unloading_time_hours: float = 0.5
+    cleaning_time_hours: float = 1.0
     working_hours_per_day: float = 8.0
     processing_speed: float
     efficiency: float
@@ -355,7 +364,10 @@ class MachineEstimateDetail(BaseModel):
     current_workload_kg: float
     daily_capacity_kg: float
     batches_count: Optional[int] = 1
+    loading_time_hours: Optional[float] = 0.5
     processing_time_per_batch_hours: Optional[float] = 3.0
+    unloading_time_hours: Optional[float] = 0.5
+    cleaning_time_hours: Optional[float] = 1.0
     working_hours_per_day: Optional[float] = 8.0
     total_processing_hours: Optional[float] = 3.0
     allocated_days_count: Optional[int] = 1

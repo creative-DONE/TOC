@@ -22,16 +22,44 @@ def get_machines(db: Session = Depends(get_db)):
     
     for m in machines:
         rel = m.reliability
-        # Calculate nominal utilization
-        nominal_weekly_kg = (m.max_batch_kg / 3.0) * (7 * 20.0 * m.efficiency)
-        util_pct = round((m.current_workload_kg / max(1.0, nominal_weekly_kg)) * 100.0, 1)
+        # Calculate machine-time utilization over 7-day horizon
+        work_h_day = getattr(m, 'working_hours_per_day', 8.0) or 8.0
+        avail_prod_hours = max(1.0, 7.0 * work_h_day)
 
-        # Check for active maintenance
-        active_maint = db.query(MachineMaintenance).filter(
+        # Check maintenance overlap in 7-day horizon
+        m_maints = db.query(MachineMaintenance).filter(
             MachineMaintenance.machine_id == m.id,
             MachineMaintenance.status.in_(["IN_PROGRESS", "SCHEDULED"]),
-            MachineMaintenance.end_time > now
-        ).order_by(MachineMaintenance.start_time.asc()).first()
+            MachineMaintenance.end_time > now,
+            MachineMaintenance.start_time < now + timedelta(days=7)
+        ).all()
+        maint_hours_horizon = sum(
+            max(0.0, (min(now + timedelta(days=7), mnt.end_time) - max(now, mnt.start_time)).total_seconds() / 3600.0)
+            for mnt in m_maints
+        )
+        effective_avail_hours = max(1.0, avail_prod_hours - maint_hours_horizon)
+
+        # Scheduled machine time from active slots
+        m_slots = db.query(ProductionSchedule).filter(
+            ProductionSchedule.machine_id == m.id,
+            ProductionSchedule.status.not_in(["CANCELLED", "COMPLETED"])
+        ).all()
+        sched_hours = sum(
+            ((getattr(s, 'loading_min', 0.0) or 0.0) +
+             (getattr(s, 'base_processing_min', 0.0) or 0.0) +
+             (getattr(s, 'unloading_min', 0.0) or 0.0) +
+             (getattr(s, 'cleaning_min', 0.0) or 0.0)) / 60.0
+            for s in m_slots
+        )
+        if sched_hours == 0.0 and m.current_workload_kg > 0:
+            sched_hours = len(m_slots) * (getattr(m, 'processing_time_hours', 3.0) or 3.0)
+
+        util_pct = min(100.0, round((sched_hours / effective_avail_hours) * 100.0, 1))
+
+        # Check for active maintenance
+        active_maint = next((mnt for mnt in m_maints if mnt.start_time <= now and mnt.end_time > now), None)
+        if not active_maint and m_maints:
+            active_maint = sorted(m_maints, key=lambda x: x.start_time)[0]
 
         maint_data = None
         if active_maint:
@@ -56,6 +84,9 @@ def get_machines(db: Session = Depends(get_db)):
             min_batch_kg=m.min_batch_kg,
             max_batch_kg=m.max_batch_kg,
             processing_time_hours=getattr(m, 'processing_time_hours', 3.0) or 3.0,
+            loading_time_hours=getattr(m, 'loading_time_hours', 0.5) or 0.5,
+            unloading_time_hours=getattr(m, 'unloading_time_hours', 0.5) or 0.5,
+            cleaning_time_hours=getattr(m, 'cleaning_time_hours', 1.0) or 1.0,
             working_hours_per_day=getattr(m, 'working_hours_per_day', 8.0) or 8.0,
             processing_speed=m.processing_speed,
             efficiency=m.efficiency,
@@ -67,7 +98,7 @@ def get_machines(db: Session = Depends(get_db)):
             compatible_cloth_types=m.compatible_cloth_types,
             compatible_colours=m.compatible_colours,
             current_workload_kg=m.current_workload_kg,
-            utilization_pct=min(99.5, util_pct),
+            utilization_pct=util_pct,
             mtbf_hours=rel.mtbf_hours if rel else 200.0,
             mttr_hours=rel.mttr_hours if rel else 4.0,
             reliability_pct=rel.reliability_pct if rel else 96.0,
@@ -102,6 +133,9 @@ def create_machine(data: MachineCreate, db: Session = Depends(get_db)):
         min_batch_kg=data.min_batch_kg,
         max_batch_kg=data.max_batch_kg,
         processing_time_hours=data.processing_time_hours,
+        loading_time_hours=data.loading_time_hours,
+        unloading_time_hours=data.unloading_time_hours,
+        cleaning_time_hours=data.cleaning_time_hours,
         working_hours_per_day=data.working_hours_per_day,
         processing_speed=data.processing_speed,
         efficiency=data.efficiency,
@@ -143,6 +177,9 @@ def create_machine(data: MachineCreate, db: Session = Depends(get_db)):
         min_batch_kg=new_machine.min_batch_kg,
         max_batch_kg=new_machine.max_batch_kg,
         processing_time_hours=getattr(new_machine, 'processing_time_hours', 3.0) or 3.0,
+        loading_time_hours=getattr(new_machine, 'loading_time_hours', 0.5) or 0.5,
+        unloading_time_hours=getattr(new_machine, 'unloading_time_hours', 0.5) or 0.5,
+        cleaning_time_hours=getattr(new_machine, 'cleaning_time_hours', 1.0) or 1.0,
         working_hours_per_day=getattr(new_machine, 'working_hours_per_day', 8.0) or 8.0,
         processing_speed=new_machine.processing_speed,
         efficiency=new_machine.efficiency,
@@ -184,9 +221,37 @@ def update_machine(machine_id: int, data: MachineUpdate, db: Session = Depends(g
     except Exception as e:
         print(f"Schedule re-optimization note on machine update: {e}")
 
+    now = datetime.utcnow()
     rel = machine.reliability
-    nominal_weekly_kg = (machine.max_batch_kg / 3.0) * (7 * 20.0 * machine.efficiency)
-    util_pct = round((machine.current_workload_kg / max(1.0, nominal_weekly_kg)) * 100.0, 1)
+    work_h_day = getattr(machine, 'working_hours_per_day', 8.0) or 8.0
+    avail_prod_hours = max(1.0, 7.0 * work_h_day)
+    m_maints = db.query(MachineMaintenance).filter(
+        MachineMaintenance.machine_id == machine.id,
+        MachineMaintenance.status.in_(["IN_PROGRESS", "SCHEDULED"]),
+        MachineMaintenance.end_time > now,
+        MachineMaintenance.start_time < now + timedelta(days=7)
+    ).all()
+    maint_hours_horizon = sum(
+        max(0.0, (min(now + timedelta(days=7), mnt.end_time) - max(now, mnt.start_time)).total_seconds() / 3600.0)
+        for mnt in m_maints
+    )
+    effective_avail_hours = max(1.0, avail_prod_hours - maint_hours_horizon)
+
+    m_slots = db.query(ProductionSchedule).filter(
+        ProductionSchedule.machine_id == machine.id,
+        ProductionSchedule.status.not_in(["CANCELLED", "COMPLETED"])
+    ).all()
+    sched_hours = sum(
+        ((getattr(s, 'loading_min', 0.0) or 0.0) +
+         (getattr(s, 'base_processing_min', 0.0) or 0.0) +
+         (getattr(s, 'unloading_min', 0.0) or 0.0) +
+         (getattr(s, 'cleaning_min', 0.0) or 0.0)) / 60.0
+        for s in m_slots
+    )
+    if sched_hours == 0.0 and machine.current_workload_kg > 0:
+        sched_hours = len(m_slots) * (getattr(machine, 'processing_time_hours', 3.0) or 3.0)
+
+    util_pct = min(100.0, round((sched_hours / effective_avail_hours) * 100.0, 1))
 
     return MachineResponse(
         id=machine.id,
@@ -197,6 +262,9 @@ def update_machine(machine_id: int, data: MachineUpdate, db: Session = Depends(g
         min_batch_kg=machine.min_batch_kg,
         max_batch_kg=machine.max_batch_kg,
         processing_time_hours=getattr(machine, 'processing_time_hours', 3.0) or 3.0,
+        loading_time_hours=getattr(machine, 'loading_time_hours', 0.5) or 0.5,
+        unloading_time_hours=getattr(machine, 'unloading_time_hours', 0.5) or 0.5,
+        cleaning_time_hours=getattr(machine, 'cleaning_time_hours', 1.0) or 1.0,
         working_hours_per_day=getattr(machine, 'working_hours_per_day', 8.0) or 8.0,
         processing_speed=machine.processing_speed,
         efficiency=machine.efficiency,
@@ -208,7 +276,7 @@ def update_machine(machine_id: int, data: MachineUpdate, db: Session = Depends(g
         compatible_cloth_types=machine.compatible_cloth_types,
         compatible_colours=machine.compatible_colours,
         current_workload_kg=machine.current_workload_kg,
-        utilization_pct=min(99.5, util_pct),
+        utilization_pct=util_pct,
         mtbf_hours=rel.mtbf_hours if rel else 200.0,
         mttr_hours=rel.mttr_hours if rel else 4.0,
         reliability_pct=rel.reliability_pct if rel else 96.0,

@@ -15,9 +15,10 @@ from app.core.processing_time import calculate_composite_processing_time, get_ca
 from app.core.buffers import calculate_buffer_penetration, validate_seven_day_planning_rule
 from app.core.toc_engine import identify_system_bottleneck
 from app.core.batch_splitter import split_order_into_capacity_allocations, is_cloth_compatible, get_compatible_machines
-from app.services.scheduler_service import optimize_factory_schedule, calculate_machine_daily_capacity, validate_daily_schedule_capacity, is_cloth_compatible, get_compatible_machines
-from app.services.scheduler_service import optimize_factory_schedule, calculate_machine_daily_capacity, validate_daily_schedule_capacity, is_cloth_compatible, get_compatible_machines
-from app.services.scheduler_service import optimize_factory_schedule, calculate_machine_daily_capacity, validate_daily_schedule_capacity
+from app.services.scheduler_service import (
+    optimize_factory_schedule, calculate_machine_daily_capacity, validate_daily_schedule_capacity,
+    add_production_time_over_shifts, is_cloth_compatible, get_compatible_machines
+)
 from app.config import settings
 
 def extract_short_order_number(order_number: str) -> str:
@@ -101,19 +102,44 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
         if s.order_id in sched_by_order:
             sched_by_order[s.order_id].append(s)
 
-    # Calculate dynamic machine load & utilization
+    # Calculate standardized machine load & utilization
     machine_metrics = []
-    total_horizon_hours = horizon_days * 24.0
 
     for m in machines:
         m_slots = sched_by_machine.get(m.id, [])
         current_load_kg = sum(get_slot_weight(s) for s in m_slots)
 
-        eff_hours = total_horizon_hours * (m.efficiency or 0.90)
+        m_loading_h = float(getattr(m, "loading_time_hours", None) or 0.5)
         m_batch_hours = float(getattr(m, "processing_time_hours", None) or 3.0)
+        m_unloading_h = float(getattr(m, "unloading_time_hours", None) or 0.5)
+        m_cleaning_h = float(getattr(m, "cleaning_time_hours", None) or 1.0)
         m_working_hours = float(getattr(m, "working_hours_per_day", None) or 8.0)
-        nominal_capacity_kg = (eff_hours / m_batch_hours) * m.max_batch_kg
-        utilization_pct = (current_load_kg / max(1.0, nominal_capacity_kg)) * 100.0
+
+        # Maintenance hours in horizon for machine m
+        m_maints = [mnt for mnt in maintenances if mnt.machine_id == m.id]
+        horizon_end = reference_now + timedelta(days=horizon_days)
+        m_maint_hours_in_horizon = 0.0
+        for mnt in m_maints:
+            overlap_s = max(reference_now, mnt.start_time)
+            overlap_e = min(horizon_end, mnt.end_time)
+            if overlap_e > overlap_s:
+                m_maint_hours_in_horizon += (overlap_e - overlap_s).total_seconds() / 3600.0
+
+        available_hours = max(0.0, (horizon_days * m_working_hours) - m_maint_hours_in_horizon)
+
+        # Scheduled Machine Time = sum_{batches} (loading + processing + unloading + cleaning)
+        scheduled_hours = 0.0
+        for s in m_slots:
+            slot_min = (s.loading_min or 0.0) + (s.base_processing_min or 0.0) + (s.unloading_min or 0.0) + (s.cleaning_min or 0.0)
+            if slot_min <= 0.001 and s.planned_start and s.planned_end:
+                slot_min = (s.planned_end - s.planned_start).total_seconds() / 60.0
+            scheduled_hours += (slot_min / 60.0)
+
+        scheduled_hours = round(scheduled_hours, 2)
+        if available_hours > 0:
+            utilization_pct = min(100.0, round((scheduled_hours / available_hours) * 100.0, 1))
+        else:
+            utilization_pct = 0.0
 
         machine_metrics.append({
             "id": m.id,
@@ -121,11 +147,17 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
             "name": m.name,
             "machine_type": m.machine_type,
             "capacity_kg": round(m.max_batch_kg, 1),
-            "nominal_capacity_kg": round(nominal_capacity_kg, 1),
+            "nominal_capacity_kg": round(available_hours * (m.max_batch_kg / max(0.5, m_batch_hours)), 1),
             "current_load_kg": round(current_load_kg, 1),
-            "utilization_pct": round(utilization_pct, 1),
+            "utilization_pct": utilization_pct,
+            "loading_time_hours": m_loading_h,
             "processing_time_hours": m_batch_hours,
+            "unloading_time_hours": m_unloading_h,
+            "cleaning_time_hours": m_cleaning_h,
             "working_hours_per_day": m_working_hours,
+            "scheduled_time_hours": scheduled_hours,
+            "available_production_time_hours": round(available_hours, 1),
+            "maintenance_hours": round(m_maint_hours_in_horizon, 1),
             "status": m.status,
             "compatible_cloth_types": m.compatible_cloth_types,
             "active_batches_count": len(m_slots),
@@ -152,8 +184,14 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
             "capacity_kg": mm["capacity_kg"],
             "current_load_kg": mm["current_load_kg"],
             "utilization_pct": mm["utilization_pct"],
+            "loading_time_hours": mm["loading_time_hours"],
             "processing_time_hours": mm["processing_time_hours"],
+            "unloading_time_hours": mm["unloading_time_hours"],
+            "cleaning_time_hours": mm["cleaning_time_hours"],
             "working_hours_per_day": mm["working_hours_per_day"],
+            "scheduled_time_hours": mm["scheduled_time_hours"],
+            "available_production_time_hours": mm["available_production_time_hours"],
+            "maintenance_hours": mm["maintenance_hours"],
             "is_bottleneck": mm["is_bottleneck"]
         }
         for mm in machine_metrics
@@ -730,18 +768,23 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
                         if start_time < now:
                             start_time = now + timedelta(hours=1 + idx * 4)
 
-                        if getattr(target_mach, "processing_time_hours", None):
-                            proc_min = float(target_mach.processing_time_hours) * 60.0 + 20.0
-                        else:
-                            proc_time_res = calculate_composite_processing_time(
-                                cloth_type=new_order.cloth_type,
-                                colour_name=new_order.colour_name,
-                                quantity_kg=alloc_qty,
-                                changeover_min=20.0,
-                                machine_efficiency=target_mach.efficiency
-                            )
-                            proc_min = proc_time_res["total_processing_min"]
-                        end_time = start_time + timedelta(minutes=proc_min)
+                        loading_h = float(getattr(target_mach, "loading_time_hours", 0.5) or 0.5)
+                        proc_h = float(getattr(target_mach, "processing_time_hours", 3.0) or 3.0)
+                        unloading_h = float(getattr(target_mach, "unloading_time_hours", 0.5) or 0.5)
+                        cleaning_cfg_h = float(getattr(target_mach, "cleaning_time_hours", 1.0) or 1.0)
+                        working_hours_day = float(getattr(target_mach, "working_hours_per_day", 8.0) or 8.0)
+                        clean_h = 0.0 if idx > 0 else cleaning_cfg_h
+                        total_batch_min = (loading_h + proc_h + unloading_h + clean_h) * 60.0
+
+                        start_time, end_time = add_production_time_over_shifts(
+                            start_time=start_time,
+                            duration_minutes=total_batch_min,
+                            working_hours_per_day=working_hours_day,
+                            maintenances=db.query(MachineMaintenance).filter(
+                                MachineMaintenance.machine_id == target_m_id,
+                                MachineMaintenance.status.in_(["SCHEDULED", "IN_PROGRESS"])
+                            ).all()
+                        )
 
                         batch = OrderBatch(
                             order_id=new_order.id,
@@ -763,10 +806,12 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
                             machine_id=target_m_id,
                             planned_start=start_time,
                             planned_end=end_time,
-                            base_processing_min=proc_min * 0.7,
+                            loading_min=loading_h * 60.0,
+                            base_processing_min=proc_h * 60.0,
+                            unloading_min=unloading_h * 60.0,
+                            cleaning_min=clean_h * 60.0,
+                            changeover_min=clean_h * 60.0,
                             setup_min=15.0,
-                            changeover_min=20.0,
-                            cleaning_min=15.0,
                             drum_buffer_min=60.0,
                             shipping_buffer_min=120.0,
                             status="SCHEDULED",
@@ -870,17 +915,23 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
                     if prop_start < now:
                         prop_start = now + timedelta(hours=1 + idx * 4)
 
-                    if getattr(target_mach, "processing_time_hours", None):
-                        dur_min = float(target_mach.processing_time_hours) * 60.0 + 20.0
-                    else:
-                        dur_min = calculate_composite_processing_time(
-                            cloth_type=order.cloth_type,
-                            colour_name=order.colour_name,
-                            quantity_kg=alloc_qty,
-                            changeover_min=20.0,
-                            machine_efficiency=target_mach.efficiency
-                        )["total_processing_min"]
-                    prop_end = prop_start + timedelta(minutes=dur_min)
+                    loading_h = float(getattr(target_mach, "loading_time_hours", 0.5) or 0.5)
+                    proc_h = float(getattr(target_mach, "processing_time_hours", 3.0) or 3.0)
+                    unloading_h = float(getattr(target_mach, "unloading_time_hours", 0.5) or 0.5)
+                    cleaning_cfg_h = float(getattr(target_mach, "cleaning_time_hours", 1.0) or 1.0)
+                    working_hours_day = float(getattr(target_mach, "working_hours_per_day", 8.0) or 8.0)
+                    clean_h = 0.0 if idx > 0 else cleaning_cfg_h
+                    total_batch_min = (loading_h + proc_h + unloading_h + clean_h) * 60.0
+
+                    prop_start, prop_end = add_production_time_over_shifts(
+                        start_time=prop_start,
+                        duration_minutes=total_batch_min,
+                        working_hours_per_day=working_hours_day,
+                        maintenances=db.query(MachineMaintenance).filter(
+                            MachineMaintenance.machine_id == target_m_id,
+                            MachineMaintenance.status.in_(["SCHEDULED", "IN_PROGRESS"])
+                        ).all()
+                    )
 
                     batch = OrderBatch(
                         order_id=order.id,
@@ -902,10 +953,12 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
                         machine_id=target_m_id,
                         planned_start=prop_start,
                         planned_end=prop_end,
-                        base_processing_min=dur_min * 0.7,
+                        loading_min=loading_h * 60.0,
+                        base_processing_min=proc_h * 60.0,
+                        unloading_min=unloading_h * 60.0,
+                        cleaning_min=clean_h * 60.0,
+                        changeover_min=clean_h * 60.0,
                         setup_min=15.0,
-                        changeover_min=20.0,
-                        cleaning_min=15.0,
                         drum_buffer_min=60.0,
                         shipping_buffer_min=120.0,
                         status="SCHEDULED",
@@ -983,6 +1036,7 @@ def execute_matrix_action(db: Session, req: MatrixEditRequest, reference_now: Op
                 batches = db.query(OrderBatch).filter(OrderBatch.order_id == order.id).all()
                 for b in batches:
                     db.delete(b)
+                order.is_locked = False
                 db.flush()
 
                 # Run Central Factory Optimizer across complete plant

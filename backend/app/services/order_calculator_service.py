@@ -9,6 +9,7 @@ from app.models.schedule_models import ProductionSchedule
 from app.core.changeover import calculate_changeover_penalty
 from app.core.batch_splitter import is_cloth_compatible
 from app.core.toc_engine import identify_system_bottleneck
+from app.services.scheduler_service import add_production_time_over_shifts
 
 
 def calculate_order_time_estimate(
@@ -113,7 +114,10 @@ def calculate_order_time_estimate(
                 "current_workload_kg": 0.0,
                 "daily_capacity_kg": mach_capacity_kg,
                 "batches_count": 0,
+                "loading_time_hours": float(getattr(m, "loading_time_hours", 0.5) or 0.5),
                 "processing_time_per_batch_hours": proc_time_per_batch,
+                "unloading_time_hours": float(getattr(m, "unloading_time_hours", 0.5) or 0.5),
+                "cleaning_time_hours": float(getattr(m, "cleaning_time_hours", 1.0) or 1.0),
                 "working_hours_per_day": working_hours_day,
                 "total_processing_hours": 0.0,
                 "allocated_days_count": 0,
@@ -121,6 +125,13 @@ def calculate_order_time_estimate(
                 "explanation": f"Machine {m.code} cannot process {cloth_type} fabric."
             })
             continue
+
+        mach_capacity_kg = float(getattr(m, "capacity_kg", None) or getattr(m, "max_batch_kg", 500.0) or 500.0)
+        proc_time_per_batch = float(getattr(m, "processing_time_hours", None) or 3.0)
+        loading_h = float(getattr(m, "loading_time_hours", 0.5) or 0.5)
+        unloading_h = float(getattr(m, "unloading_time_hours", 0.5) or 0.5)
+        cleaning_cfg_h = float(getattr(m, "cleaning_time_hours", 1.0) or 1.0)
+        working_hours_day = float(getattr(m, "working_hours_per_day", None) or 8.0)
 
         # Existing slots on this machine
         m_slots = slots_by_machine.get(m.id, [])
@@ -138,104 +149,47 @@ def calculate_order_time_estimate(
                 last_colour = last_slot.order.colour_code or last_colour
                 last_fabric = last_slot.order.cloth_type or last_fabric
 
-        # Calculate changeover penalty from previous shade
-        co_penalty = calculate_changeover_penalty(
-            from_fabric=last_fabric,
-            from_colour=last_colour,
-            to_fabric=cloth_type,
-            to_colour=resolved_colour_code,
-            machine_type=m.machine_type
-        )
-        changeover_min = float(co_penalty["changeover_min"])
-        changeover_hours = changeover_min / 60.0
+        # CONDITIONAL CLEANING RULE:
+        # - Same color consecutive order -> 0h cleaning
+        # - Different colors -> configured cleaning time
+        # - Same order split across multiple batches -> 0h cleaning between batches
+        if last_colour.strip().upper() == resolved_colour_code.strip().upper():
+            initial_cleaning_h = 0.0
+        else:
+            initial_cleaning_h = cleaning_cfg_h
 
         # ---------------------------------------------------------------------
-        # USER SPECIFIED FORMULAS:
+        # PRODUCTION TIME FORMULAS:
         # 1. Number of Batches = ceil(Order Quantity / Machine Capacity)
-        # 2. Total Processing Time = Number of Batches * Processing Time per Batch
+        # 2. Batch Pure Production Time = Loading + Processing + Unloading
+        # 3. Total Production Time = (Batches * Batch Pure Time) + Initial Cleaning
         # ---------------------------------------------------------------------
         num_batches = int(math.ceil(quantity_kg / max(1.0, mach_capacity_kg)))
-        total_proc_hours = round(num_batches * proc_time_per_batch, 2)
-        total_required_hours = round(total_proc_hours + changeover_hours, 2)
+        batch_pure_hours = round(loading_h + proc_time_per_batch + unloading_h, 2)
+        total_batch_pure_hours = round(num_batches * batch_pure_hours, 2)
+        total_required_hours = round(total_batch_pure_hours + initial_cleaning_h, 2)
 
-        # ---------------------------------------------------------------------
-        # 3. SCHEDULE PROCESSING TIME ACCORDING TO 8 WORKING HOURS/DAY SHIFT:
-        # Shift runs 08:00 AM to (08:00 AM + working_hours_day), default 08:00 - 16:00
-        # ---------------------------------------------------------------------
-        shift_start_hour = 8
-        shift_duration_hours = working_hours_day
-
-        curr_day = 1
-        max_horizon_days = 90
-        remaining_hours = total_required_hours
-        estimated_start: Optional[datetime] = None
-        estimated_completion: Optional[datetime] = None
-        allocated_days_count = 1
-
-        while remaining_hours > 0.001 and curr_day <= max_horizon_days:
-            day_midnight = today_midnight + timedelta(days=curr_day - 1)
-            shift_start = day_midnight.replace(hour=shift_start_hour, minute=0, second=0)
-            shift_end = shift_start + timedelta(hours=shift_duration_hours)
-
-            # Determine earliest availability on this day
-            if curr_day == 1:
-                earliest_possible = max(now + timedelta(minutes=30), shift_start)
+        # Determine earliest candidate start
+        if m_slots:
+            last_end = max((s.planned_end for s in m_slots if s.planned_end), default=None)
+            if last_end:
+                start_candidate = max(now + timedelta(minutes=30), last_end + timedelta(minutes=5))
             else:
-                earliest_possible = shift_start
+                start_candidate = max(now + timedelta(minutes=30), today_midnight.replace(hour=8, minute=0, second=0))
+        else:
+            start_candidate = max(now + timedelta(minutes=30), today_midnight.replace(hour=8, minute=0, second=0))
 
-            # Check existing slots ending on or overlapping this day
-            day_slots = [
-                s for s in m_slots
-                if s.planned_start and s.planned_end and s.planned_end > earliest_possible and s.planned_start < shift_end
-            ]
-            if day_slots:
-                day_busy_end = max(s.planned_end for s in day_slots)
-                # If first batch starts here, add changeover
-                if estimated_start is None:
-                    earliest_possible = max(earliest_possible, day_busy_end + timedelta(minutes=changeover_min))
-                else:
-                    earliest_possible = max(earliest_possible, day_busy_end)
+        # Schedule processing time adhering to working hours shift and maintenances
+        estimated_start, estimated_completion = add_production_time_over_shifts(
+            start_time=start_candidate,
+            duration_minutes=total_required_hours * 60.0,
+            working_hours_per_day=working_hours_day,
+            maintenances=machine_maintenances.get(m.id, [])
+        )
 
-            # Check maintenance collision
-            maints_on_day = machine_maintenances.get(m.id, [])
-            for maint in maints_on_day:
-                if maint.start_time < shift_end and maint.end_time > earliest_possible:
-                    if maint.start_time <= earliest_possible:
-                        earliest_possible = max(earliest_possible, maint.end_time + timedelta(minutes=15))
-
-            # Check if any productive time remains within today's shift
-            if earliest_possible >= shift_end:
-                # No time left on this day, advance to next day
-                curr_day += 1
-                continue
-
-            # Record estimated start if not yet recorded
-            if estimated_start is None:
-                estimated_start = earliest_possible
-
-            avail_today_hours = (shift_end - earliest_possible).total_seconds() / 3600.0
-
-            # Subtract any mid-shift maintenance interval during [earliest_possible, shift_end]
-            for maint in maints_on_day:
-                if maint.start_time >= earliest_possible and maint.start_time < shift_end:
-                    m_overlap = min(shift_end, maint.end_time) - maint.start_time
-                    avail_today_hours = max(0.0, avail_today_hours - (m_overlap.total_seconds() / 3600.0))
-
-            if avail_today_hours >= remaining_hours:
-                # Can finish on this day!
-                estimated_completion = earliest_possible + timedelta(hours=remaining_hours)
-                remaining_hours = 0.0
-                allocated_days_count = curr_day
-                break
-            else:
-                # Partial day utilization; remaining hours spill into next day's shift
-                remaining_hours = round(remaining_hours - avail_today_hours, 3)
-                curr_day += 1
-
-        if estimated_start is None:
-            estimated_start = today_midnight.replace(hour=8, minute=0, second=0) + timedelta(days=1)
-        if estimated_completion is None:
-            estimated_completion = estimated_start + timedelta(hours=total_required_hours)
+        start_day = (estimated_start.replace(hour=0, minute=0, second=0, microsecond=0) - today_midnight).days + 1
+        end_day = (estimated_completion.replace(hour=0, minute=0, second=0, microsecond=0) - today_midnight).days + 1
+        allocated_days_count = max(1, end_day - start_day + 1)
 
         # Check Due Date feasibility
         slack_seconds = (due_date - estimated_completion).total_seconds()
@@ -246,18 +200,16 @@ def calculate_order_time_estimate(
         is_bottleneck_m = (m.name == bottleneck_resource or m.code in bottleneck_resource)
 
         batch_suffix = 'es' if num_batches > 1 else ''
+        clean_desc = f"{initial_cleaning_h:.1f}h cleaning" if initial_cleaning_h > 0 else "0h cleaning (same shade)"
         reasons_list = [
-            f"{num_batches} batch{batch_suffix} ({proc_time_per_batch:.1f}h/batch, total {total_proc_hours:.1f}h)"
+            f"{num_batches} batch{batch_suffix} ({loading_h:.1f}h load + {proc_time_per_batch:.1f}h proc + {unloading_h:.1f}h unload = {batch_pure_hours:.1f}h/batch; {clean_desc}; total {total_required_hours:.1f}h)"
         ]
+        if num_batches > 1:
+            reasons_list.append(f"0h cleaning between batches 1..{num_batches}")
         if is_on_time:
             reasons_list.append(f"Completes {abs(slack_hours):.1f}h before due date")
         else:
             reasons_list.append(f"Delayed by {delay_hours:.1f}h past due date")
-
-        if changeover_min <= 15.0:
-            reasons_list.append(f"Low changeover ({changeover_min:.0f}m from {last_colour})")
-        else:
-            reasons_list.append(f"Changeover penalty: {changeover_min:.0f}m ({last_colour} -> {resolved_colour_name})")
 
         reasons_list.append(f"Shift: {working_hours_day:.0f}h/day")
 
@@ -280,8 +232,11 @@ def calculate_order_time_estimate(
             "unsuitability_reason": None,
             "estimated_start": estimated_start,
             "estimated_completion": estimated_completion,
-            "production_hours": total_proc_hours,
-            "changeover_min": round(changeover_min, 1),
+            "production_hours": total_batch_pure_hours,
+            "loading_time_hours": loading_h,
+            "unloading_time_hours": unloading_h,
+            "cleaning_time_hours": initial_cleaning_h,
+            "changeover_min": round(initial_cleaning_h * 60.0, 1),
             "is_on_time": is_on_time,
             "delay_hours": delay_hours,
             "slack_hours": slack_hours,
@@ -292,7 +247,7 @@ def calculate_order_time_estimate(
             "batches_count": num_batches,
             "processing_time_per_batch_hours": proc_time_per_batch,
             "working_hours_per_day": working_hours_day,
-            "total_processing_hours": total_proc_hours,
+            "total_processing_hours": total_required_hours,
             "allocated_days_count": allocated_days_count,
             "preceding_colour": last_colour,
             "explanation": " • ".join(reasons_list)

@@ -267,7 +267,7 @@ def handle_machine_maintenance_scheduling(
             if sched.planned_end > order.due_date:
                 # Add alert for due date risk
                 alert = Alert(
-                    severity=AlertSeverity.HIGH.value,
+                    severity=AlertSeverity.WARNING.value,
                     alert_type="MAINTENANCE_DELAY",
                     title=f"Order {order.order_number} Pushed Close to Deadline by Maintenance",
                     message=f"{machine.name} {duration_hours:.1f}h maintenance shifts completion to {sched.planned_end.strftime('%d %b %H:%M')}.",

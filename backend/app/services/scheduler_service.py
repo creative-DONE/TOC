@@ -74,6 +74,100 @@ def calculate_machine_daily_capacity(
     return round(base_cap, 1)
 
 
+def add_production_time_over_shifts(
+    start_time: datetime,
+    duration_minutes: float,
+    working_hours_per_day: float = 8.0,
+    maintenances: Optional[List[MachineMaintenance]] = None
+) -> Tuple[datetime, datetime]:
+    """
+    Computes (slot_start, slot_end) adhering to plant shift boundaries and maintenance windows.
+    - Default shift: 08:00 AM to (08:00 AM + working_hours_per_day) (e.g. 08:00 to 16:00 for 8h).
+    - If start_time is before 08:00 on its day, it advances to 08:00.
+    - If start_time is >= shift_end on its day, it advances to next day at 08:00.
+    - Maintenance collisions move the start/work to the next available working window.
+    - If duration exceeds today's remaining shift, the work carries over into subsequent working days.
+    """
+    if duration_minutes <= 0:
+        return start_time, start_time
+
+    maints = sorted(maintenances or [], key=lambda m: m.start_time)
+    curr = start_time
+    working_hours = float(working_hours_per_day or 8.0)
+    max_days_safety = 120
+    safety_counter = 0
+
+    def advance_to_valid_working_time(t: datetime) -> datetime:
+        nonlocal safety_counter
+        while safety_counter < max_days_safety:
+            safety_counter += 1
+            day_midnight = t.replace(hour=0, minute=0, second=0, microsecond=0)
+            shift_start = day_midnight.replace(hour=8, minute=0, second=0)
+            shift_end = shift_start + timedelta(hours=working_hours)
+
+            if t < shift_start:
+                t = shift_start
+
+            if t >= shift_end:
+                t = (day_midnight + timedelta(days=1)).replace(hour=8, minute=0, second=0)
+                continue
+
+            in_maint = False
+            for m in maints:
+                if m.start_time <= t < m.end_time:
+                    t = m.end_time
+                    in_maint = True
+                    break
+            if in_maint:
+                continue
+
+            if t >= shift_end:
+                t = (day_midnight + timedelta(days=1)).replace(hour=8, minute=0, second=0)
+                continue
+
+            return t
+        return t
+
+    curr = advance_to_valid_working_time(curr)
+    actual_start = curr
+    rem_min = float(duration_minutes)
+
+    while rem_min > 0.001 and safety_counter < max_days_safety * 2:
+        safety_counter += 1
+        curr = advance_to_valid_working_time(curr)
+        day_midnight = curr.replace(hour=0, minute=0, second=0, microsecond=0)
+        shift_start = day_midnight.replace(hour=8, minute=0, second=0)
+        shift_end = shift_start + timedelta(hours=working_hours)
+
+        avail_today_min = max(0.0, (shift_end - curr).total_seconds() / 60.0)
+
+        next_maint_start = None
+        for m in maints:
+            if curr < m.start_time < shift_end:
+                if next_maint_start is None or m.start_time < next_maint_start:
+                    next_maint_start = m.start_time
+
+        if next_maint_start:
+            avail_today_min = min(avail_today_min, max(0.0, (next_maint_start - curr).total_seconds() / 60.0))
+
+        if avail_today_min <= 0.001:
+            curr = (day_midnight + timedelta(days=1)).replace(hour=8, minute=0, second=0)
+            continue
+
+        if rem_min <= avail_today_min:
+            curr = curr + timedelta(minutes=rem_min)
+            rem_min = 0.0
+            break
+        else:
+            rem_min -= avail_today_min
+            curr = curr + timedelta(minutes=avail_today_min)
+            if curr >= shift_end:
+                curr = (day_midnight + timedelta(days=1)).replace(hour=8, minute=0, second=0)
+
+    actual_end = curr
+    return actual_start, actual_end
+
+
 def validate_daily_schedule_capacity(
     db: Session,
     reference_now: Optional[datetime] = None,
@@ -281,6 +375,8 @@ def optimize_factory_schedule(
     # 6. Reconcile locked jobs and clear flexible jobs
     locked_order_ids: Set[int] = set()
     locked_slots_by_machine: Dict[int, List[ProductionSchedule]] = {m.id: [] for m in all_machines}
+    machine_last_colour: Dict[int, str] = {m.id: "WHITE" for m in all_machines}
+    machine_last_fabric: Dict[int, str] = {m.id: "Cotton" for m in all_machines}
 
     for order in active_orders:
         o_slots = db.query(ProductionSchedule).filter(
@@ -290,7 +386,7 @@ def optimize_factory_schedule(
 
         is_order_locked = bool(getattr(order, "is_locked", False) or (any(s.is_locked for s in o_slots) if o_slots else False))
 
-        if preserve_locked and not force_reschedule_all and is_order_locked:
+        if preserve_locked and not force_reschedule_all and is_order_locked and len(o_slots) > 0:
             # Preserve locked order: verify batch count matches order quantity without duplicate ghost slots
             mach = o_slots[0].machine if o_slots and o_slots[0].machine else operational_machines[0]
             req_batches_count = math.ceil(order.quantity_kg / max(1.0, mach.max_batch_kg))
@@ -312,15 +408,24 @@ def optimize_factory_schedule(
                     new_allocs = split_order_into_capacity_allocations(order.quantity_kg, mach.max_batch_kg)
                     base_start = o_slots[0].planned_start if (o_slots and o_slots[0].planned_start) else (order.planned_start or reference_now)
                     proc_h = getattr(mach, "processing_time_hours", 3.0) or 3.0
+                    loading_h = getattr(mach, "loading_time_hours", 0.5) or 0.5
+                    unloading_h = getattr(mach, "unloading_time_hours", 0.5) or 0.5
+                    cleaning_cfg_h = getattr(mach, "cleaning_time_hours", 1.0) or 1.0
+                    working_hours_day = getattr(mach, "working_hours_per_day", 8.0) or 8.0
+                    m_maints = machine_maintenances.get(mach.id, [])
+
                     for s in o_slots:
                         db.delete(s)
                     for b in db.query(OrderBatch).filter(OrderBatch.order_id == order.id).all():
                         db.delete(b)
                     db.flush()
                     o_slots = []
+                    curr_start = base_start
                     for idx, a_kg in enumerate(new_allocs):
-                        slot_start = base_start + timedelta(days=idx)
-                        slot_end = slot_start + timedelta(hours=proc_h)
+                        clean_h = 0.0 if idx > 0 else (0.0 if (machine_last_colour.get(mach.id, "WHITE").strip().upper() == (order.colour_code or "WHITE").strip().upper()) else cleaning_cfg_h)
+                        tot_min = (loading_h + proc_h + unloading_h + clean_h) * 60.0
+                        slot_start, slot_end = add_production_time_over_shifts(curr_start, tot_min, working_hours_day, m_maints)
+                        curr_start = slot_end + timedelta(minutes=5)
                         nb = OrderBatch(order_id=order.id, batch_number=idx+1, total_batches=len(new_allocs),
                                         batch_quantity_kg=a_kg, assigned_machine_id=mach.id, status="SCHEDULED",
                                         planned_start=slot_start, planned_completion=slot_end)
@@ -333,10 +438,12 @@ def optimize_factory_schedule(
                             machine_id=mach.id,
                             planned_start=slot_start,
                             planned_end=slot_end,
-                            base_processing_min=proc_h * 60.0 * 0.7,
+                            loading_min=loading_h * 60.0,
+                            base_processing_min=proc_h * 60.0,
+                            unloading_min=unloading_h * 60.0,
+                            cleaning_min=clean_h * 60.0,
                             setup_min=15.0,
-                            changeover_min=20.0,
-                            cleaning_min=15.0,
+                            changeover_min=clean_h * 60.0,
                             drum_buffer_min=60.0,
                             shipping_buffer_min=120.0,
                             is_locked=True,
@@ -372,8 +479,6 @@ def optimize_factory_schedule(
         return daily_load[m_id].get(d_idx, 0.0)
 
     machine_day_clocks: Dict[Tuple[int, int], datetime] = {}
-    machine_last_colour: Dict[int, str] = {m.id: "WHITE" for m in all_machines}
-    machine_last_fabric: Dict[int, str] = {m.id: "Cotton" for m in all_machines}
 
     # Pre-populate locked slots into daily loads
     for m in all_machines:
@@ -501,23 +606,30 @@ def optimize_factory_schedule(
                     if any(w in (m.compatible_cloth_types or "").lower() for w in curr_order.cloth_type.lower().split() if len(w) > 4):
                         eff_score += 15.0
 
-                # 6. Changeover penalty
+                # 6. Changeover penalty & Color Sequencing Preference
                 prev_col = machine_last_colour.get(m.id, "WHITE")
                 prev_fab = machine_last_fabric.get(m.id, "Cotton")
-                co_res = calculate_changeover_penalty(
-                    from_fabric=prev_fab,
-                    from_colour=prev_col,
-                    to_fabric=curr_order.cloth_type,
-                    to_colour=curr_order.colour_code or "WHITE",
-                    machine_type=m.machine_type
-                )
-                co_penalty = (co_res["changeover_min"] / 60.0) * 10.0
+                curr_col = curr_order.colour_code or "WHITE"
+                if prev_col.strip().upper() == curr_col.strip().upper():
+                    color_seq_bonus = 35.0
+                    co_penalty = 0.0
+                else:
+                    color_seq_bonus = 0.0
+                    co_res = calculate_changeover_penalty(
+                        from_fabric=prev_fab,
+                        from_colour=prev_col,
+                        to_fabric=curr_order.cloth_type,
+                        to_colour=curr_col,
+                        machine_type=m.machine_type
+                    )
+                    co_penalty = (co_res["changeover_min"] / 60.0) * 10.0
 
                 cand_score = (
                     fit_bonus
                     + due_score
                     + balance_score
                     + eff_score
+                    + color_seq_bonus
                     - lateness_penalty
                     - drum_penalty
                     - co_penalty
@@ -595,40 +707,35 @@ def optimize_factory_schedule(
             clock_key = (m_id, alloc_day)
             slot_start = max(shift_start, machine_day_clocks.get(clock_key, shift_start))
 
-            # Calculate processing time
-            prev_col = machine_last_colour.get(m_id, "WHITE")
-            prev_fab = machine_last_fabric.get(m_id, "Cotton")
-            co_res = calculate_changeover_penalty(
-                from_fabric=prev_fab,
-                from_colour=prev_col,
-                to_fabric=curr_order.cloth_type,
-                to_colour=curr_order.colour_code or "WHITE",
-                machine_type=target_m.machine_type
-            )
-            changeover_min = co_res["changeover_min"]
+            # Machine time parameters
+            loading_h = float(getattr(target_m, "loading_time_hours", 0.5) or 0.5)
+            proc_h = float(getattr(target_m, "processing_time_hours", 3.0) or 3.0)
+            unloading_h = float(getattr(target_m, "unloading_time_hours", 0.5) or 0.5)
+            cleaning_cfg_h = float(getattr(target_m, "cleaning_time_hours", 1.0) or 1.0)
+            working_hours_day = float(getattr(target_m, "working_hours_per_day", 8.0) or 8.0)
 
-            calibrated_base = get_calibrated_base_time(curr_order.cloth_type, curr_order.colour_name, db)
-            proc_times = calculate_composite_processing_time(
-                cloth_type=curr_order.cloth_type,
-                colour_name=curr_order.colour_name,
-                quantity_kg=alloc_kg,
-                changeover_min=changeover_min,
-                machine_efficiency=target_m.efficiency,
-                historical_calibrated_base_min=calibrated_base
-            )
-            if getattr(target_m, "processing_time_hours", None):
-                batch_proc_min = float(target_m.processing_time_hours) * 60.0
-                total_slot_min = batch_proc_min + changeover_min
-                proc_times["base_dye_min"] = batch_proc_min
+            # CONDITIONAL CLEANING RULE:
+            # 1. Same order split into multiple batches -> 0h cleaning between batches!
+            # 2. Consecutive orders with same color -> 0h cleaning!
+            # 3. Different colors -> add machine's configured cleaning time
+            if idx > 0:
+                cleaning_time_h = 0.0
             else:
-                total_slot_min = proc_times["total_processing_min"]
-            slot_end = slot_start + timedelta(minutes=total_slot_min)
+                prev_col = machine_last_colour.get(m_id, "WHITE")
+                curr_col = curr_order.colour_code or "WHITE"
+                if prev_col.strip().upper() == curr_col.strip().upper():
+                    cleaning_time_h = 0.0
+                else:
+                    cleaning_time_h = cleaning_cfg_h
 
-            # Maintenance collision avoidance
-            for maint in machine_maintenances.get(m_id, []):
-                if slot_start < maint.end_time and slot_end > maint.start_time:
-                    slot_start = maint.end_time + timedelta(minutes=20)
-                    slot_end = slot_start + timedelta(minutes=total_slot_min)
+            total_slot_min = (loading_h + proc_h + unloading_h + cleaning_time_h) * 60.0
+
+            slot_start, slot_end = add_production_time_over_shifts(
+                start_time=slot_start,
+                duration_minutes=total_slot_min,
+                working_hours_per_day=working_hours_day,
+                maintenances=machine_maintenances.get(m_id, [])
+            )
 
             freeze_level, _ = get_freeze_status_for_time(slot_start, now, curr_order.due_date)
             # Flexible orders remain unlocked so the central optimizer can rebalance them dynamically
@@ -650,15 +757,15 @@ def optimize_factory_schedule(
             water_m3 = (alloc_kg / 1000.0) * target_m.water_m3_hr
             steam_kg = (total_slot_min / 60.0) * target_m.steam_kg_hr
             kwh = (total_slot_min / 60.0) * target_m.power_kw
-            op_cost = (total_slot_min / 60.0) * settings.COST_MACHINE_OPERATING_HR + co_res["chemical_cost_inr"]
+            op_cost = (total_slot_min / 60.0) * settings.COST_MACHINE_OPERATING_HR
 
             slack_hours = (curr_order.due_date - slot_end).total_seconds() / 3600.0
             reasons = generate_scheduling_explanation(
                 order=curr_order,
                 machine=target_m,
                 operator=assigned_op,
-                prev_colour=prev_col,
-                changeover_min=changeover_min,
+                prev_colour=machine_last_colour.get(m_id, "WHITE"),
+                changeover_min=cleaning_time_h * 60.0,
                 due_date_slack_hours=slack_hours
             )
             reason_summary = " | ".join(reasons)
@@ -671,10 +778,12 @@ def optimize_factory_schedule(
                 operator_id=assigned_op.id if assigned_op else None,
                 planned_start=slot_start,
                 planned_end=slot_end,
-                base_processing_min=proc_times["base_dye_min"],
-                setup_min=proc_times["setup_min"],
-                changeover_min=proc_times["changeover_min"],
-                cleaning_min=proc_times["cleaning_min"],
+                loading_min=loading_h * 60.0,
+                base_processing_min=proc_h * 60.0,
+                unloading_min=unloading_h * 60.0,
+                cleaning_min=cleaning_time_h * 60.0,
+                changeover_min=cleaning_time_h * 60.0,
+                setup_min=15.0,
                 drum_buffer_min=settings.DEFAULT_DRUM_BUFFER_HOURS * 60.0 if m_id == current_drum_id else 30.0,
                 shipping_buffer_min=settings.DEFAULT_SHIPPING_BUFFER_HOURS * 60.0,
                 is_locked=is_locked,
@@ -691,7 +800,17 @@ def optimize_factory_schedule(
 
             batch_starts.append(slot_start)
             batch_ends.append(slot_end)
-            machine_day_clocks[clock_key] = slot_end + timedelta(minutes=15)
+
+            machine_last_colour[m_id] = curr_order.colour_code or "WHITE"
+            machine_last_fabric[m_id] = curr_order.cloth_type or "Cotton"
+
+            end_mid = slot_end.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_day_idx = (end_mid - today_midnight).days + 1
+            machine_day_clocks[(m_id, end_day_idx)] = slot_end + timedelta(minutes=5)
+            for d_inter in range(alloc_day, end_day_idx):
+                inter_mid = today_midnight + timedelta(days=d_inter - 1)
+                inter_shift_end = inter_mid.replace(hour=8, minute=0, second=0) + timedelta(hours=working_hours_day)
+                machine_day_clocks[(m_id, d_inter)] = inter_shift_end
 
         curr_order.planned_start = min(batch_starts)
         curr_order.planned_completion = max(batch_ends)

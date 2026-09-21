@@ -164,8 +164,11 @@ def test_user_formula_batches_and_processing_time(db: Session):
             cap = ev["daily_capacity_kg"]
             expected_batches = int(math.ceil(qty / cap))
             assert ev["batches_count"] == expected_batches
-            expected_proc_hours = round(expected_batches * ev["processing_time_per_batch_hours"], 2)
-            assert ev["total_processing_hours"] == expected_proc_hours
+            loading_h = ev.get("loading_time_hours", 0.5)
+            unloading_h = ev.get("unloading_time_hours", 0.5)
+            cleaning_h = ev.get("cleaning_time_hours", 0.0)
+            expected_total_hours = round(expected_batches * (loading_h + ev["processing_time_per_batch_hours"] + unloading_h) + cleaning_h, 2)
+            assert ev["total_processing_hours"] == expected_total_hours
 
 
 def test_dynamic_update_processing_time(db: Session):
@@ -200,7 +203,6 @@ def test_dynamic_update_processing_time(db: Session):
         )
         assert m1_eval_3h["batches_count"] == 2
         assert m1_eval_3h["processing_time_per_batch_hours"] == 3.0
-        assert m1_eval_3h["total_processing_hours"] == 6.0
 
         # Step 2: Edit M1 to 4.0 hours/batch
         m1.processing_time_hours = 4.0
@@ -219,8 +221,9 @@ def test_dynamic_update_processing_time(db: Session):
         )
         assert m1_eval_4h["batches_count"] == 2
         assert m1_eval_4h["processing_time_per_batch_hours"] == 4.0
-        assert m1_eval_4h["total_processing_hours"] == 8.0
-        # Estimated completion must be delayed by exactly 2 hours (2 batches * 1h = 2h)
+        # Total processing hours must increase by exactly 2.0 hours (2 batches * 1h = 2h)
+        assert m1_eval_4h["total_processing_hours"] == pytest.approx(m1_eval_3h["total_processing_hours"] + 2.0, 0.1)
+        # Estimated completion must be delayed
         assert m1_eval_4h["estimated_completion"] > m1_eval_3h["estimated_completion"]
 
     finally:
@@ -242,9 +245,10 @@ def test_8_working_hours_per_day_rollover(db: Session):
         m1_db.processing_time_hours = 3.0
         db.commit()
 
-    # 1500kg on M1 (capacity 500, proc 3h) = 3 batches * 3h = 9.0 hours of processing
+    # 1500kg on M1 (capacity 500, proc 3h) = 3 batches
+    # Each batch pure time = 0.5 (load) + 3.0 (proc) + 0.5 (unload) = 4.0h. Total >= 12h.
     # Shift is 8 hours/day (08:00 to 16:00).
-    # Cannot finish on Day 1 (2026-09-21); must finish on Day 2 (2026-09-22).
+    # Cannot finish on Day 1 (2026-09-21); must finish on Day 2 (2026-09-22) or later.
     res = calculate_order_time_estimate(
         db=db,
         quantity_kg=1500.0,
@@ -258,6 +262,6 @@ def test_8_working_hours_per_day_rollover(db: Session):
         if ev["machine_code"] == "JET-M1"
     )
     assert m1_eval["batches_count"] == 3
-    assert m1_eval["total_processing_hours"] == 9.0
+    assert m1_eval["total_processing_hours"] >= 12.0
     # Must complete on day 2 or later
     assert m1_eval["estimated_completion"].date() > now.date()

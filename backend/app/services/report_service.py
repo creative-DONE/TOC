@@ -214,15 +214,100 @@ def generate_production_excel_report(schedules: List[Any], report_title: str = "
 
         row_idx += 1
 
+    # Machine Fleet Parameters & Standardized Utilization Summary
+    ws_matrix.append([])
+    ws_matrix.append([])
+    summary_title_row = row_idx + 2
+    ws_matrix.merge_cells(f"A{summary_title_row}:L{summary_title_row}")
+    sum_title_cell = ws_matrix[f"A{summary_title_row}"]
+    sum_title_cell.value = "FLEET PARAMETERS & REAL PRODUCTION TIME UTILIZATION SUMMARY"
+    sum_title_cell.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+    sum_title_cell.fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+    sum_title_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws_matrix.row_dimensions[summary_title_row].height = 24
+
+    sum_headers = [
+        "Machine Code", "Machine Name", "Capacity (kg/batch)", "Loading (hr)", "Processing (hr)",
+        "Unloading (hr)", "Cleaning (hr)", "Shift (hr/day)", "Scheduled Load (kg)", "Scheduled Time (hr)",
+        "Maintenance (hr)", "Utilization %"
+    ]
+    ws_matrix.append(sum_headers)
+    ws_matrix.row_dimensions[summary_title_row + 1].height = 22
+    for c_i in range(1, len(sum_headers) + 1):
+        c = ws_matrix.cell(row=summary_title_row + 1, column=c_i)
+        c.fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+        c.font = Font(name="Arial", size=9, bold=True, color="38BDF8")
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = thin_border
+
+    # Fetch maintenances if db
+    maints = []
+    if db:
+        from app.models.factory_models import MachineMaintenance
+        from datetime import timedelta
+        maints = db.query(MachineMaintenance).filter(
+            MachineMaintenance.status.in_(["SCHEDULED", "IN_PROGRESS"]),
+            MachineMaintenance.end_time > now
+        ).all()
+    else:
+        from datetime import timedelta
+
+    sum_r = summary_title_row + 2
+    for m in machines:
+        m_slots = [s for s in schedules if s.machine_id == m.id]
+        m_load = sum((s.batch.batch_quantity_kg if s.batch else (s.order.quantity_kg if s.order else m.max_batch_kg)) for s in m_slots)
+        
+        m_loading = float(getattr(m, "loading_time_hours", 0.5) or 0.5)
+        m_proc = float(getattr(m, "processing_time_hours", 3.0) or 3.0)
+        m_unloading = float(getattr(m, "unloading_time_hours", 0.5) or 0.5)
+        m_cleaning = float(getattr(m, "cleaning_time_hours", 1.0) or 1.0)
+        m_shift = float(getattr(m, "working_hours_per_day", 8.0) or 8.0)
+        
+        # Maint in horizon (7 days)
+        h_end = now + timedelta(days=7)
+        m_maint_hr = 0.0
+        for mnt in maints:
+            if mnt.machine_id == m.id:
+                ov_s = max(now, mnt.start_time)
+                ov_e = min(h_end, mnt.end_time)
+                if ov_e > ov_s:
+                    m_maint_hr += (ov_e - ov_s).total_seconds() / 3600.0
+
+        # Scheduled time
+        s_time_hr = 0.0
+        for s in m_slots:
+            dur_m = (s.loading_min or 0.0) + (s.base_processing_min or 0.0) + (s.unloading_min or 0.0) + (s.cleaning_min or 0.0)
+            if dur_m <= 0.001 and s.planned_start and s.planned_end:
+                dur_m = (s.planned_end - s.planned_start).total_seconds() / 60.0
+            s_time_hr += (dur_m / 60.0)
+
+        avail_hr = max(0.0, (7.0 * m_shift) - m_maint_hr)
+        util_pct = min(100.0, round((s_time_hr / avail_hr) * 100.0, 1)) if avail_hr > 0 else 0.0
+
+        row_vals = [
+            m.code, m.name, round(m.max_batch_kg, 1), m_loading, m_proc,
+            m_unloading, m_cleaning, m_shift, round(m_load, 1), round(s_time_hr, 1),
+            round(m_maint_hr, 1), f"{util_pct:.1f}%"
+        ]
+        ws_matrix.append(row_vals)
+        for c_i in range(1, len(row_vals) + 1):
+            c = ws_matrix.cell(row=sum_r, column=c_i)
+            c.border = thin_border
+            c.alignment = Alignment(horizontal="center" if c_i in [1, 3, 4, 5, 6, 7, 8, 10, 11, 12] else "left", vertical="center")
+            c.font = Font(name="Arial", size=9, bold=(c_i in [1, 12]), color="0F172A")
+            if c_i == 12:
+                c.fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
+        sum_r += 1
+
     # Auto-adjust column widths for matrix sheet
-    for col_idx in range(1, total_cols + 1):
+    for col_idx in range(1, max(total_cols + 1, len(sum_headers) + 1)):
         col_letter = get_column_letter(col_idx)
         max_len = 14
-        for r in range(4, row_idx):
+        for r in range(4, sum_r):
             val = str(ws_matrix.cell(row=r, column=col_idx).value or "")
             if len(val) > max_len:
                 max_len = len(val)
-        ws_matrix.column_dimensions[col_letter].width = max(max_len + 3, 13)
+        ws_matrix.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     # =========================================================================
     # SHEET 2: DETAILED DISPATCH SLOTS
@@ -231,7 +316,7 @@ def generate_production_excel_report(schedules: List[Any], report_title: str = "
     header_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
     header_font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
 
-    ws_slots.merge_cells("A1:K1")
+    ws_slots.merge_cells("A1:P1")
     ws_slots["A1"] = f"{settings.PROJECT_NAME} — Production Schedule Dispatch Records"
     ws_slots["A1"].font = Font(name="Arial", size=12, bold=True, color="1E3A8A")
     ws_slots["A1"].alignment = Alignment(horizontal="center", vertical="center")
@@ -239,7 +324,9 @@ def generate_production_excel_report(schedules: List[Any], report_title: str = "
 
     slot_headers = [
         "Slot ID", "Order #", "Customer", "Fabric", "Qty (kg)",
-        "Colour", "Machine", "Operator", "Planned Start", "Planned End", "Freeze Status"
+        "Colour", "Machine", "Operator", "Planned Start", "Planned End",
+        "Loading (min)", "Proc Time (min)", "Unloading (min)", "Cleaning (min)", "Total Time (min)",
+        "Freeze Status"
     ]
     ws_slots.append([])
     ws_slots.append(slot_headers)
@@ -264,15 +351,25 @@ def generate_production_excel_report(schedules: List[Any], report_title: str = "
         start_str = s.planned_start.strftime("%d %b %H:%M") if s.planned_start else ""
         end_str = s.planned_end.strftime("%d %b %H:%M") if s.planned_end else ""
 
+        loading_m = s.loading_min or 0.0
+        proc_m = s.base_processing_min or 0.0
+        unloading_m = s.unloading_min or 0.0
+        clean_m = s.cleaning_min or 0.0
+        total_m = loading_m + proc_m + unloading_m + clean_m
+        if total_m <= 0.001 and s.planned_start and s.planned_end:
+            total_m = (s.planned_end - s.planned_start).total_seconds() / 60.0
+
         ws_slots.append([
             s.id, ord_num, cust_name, cloth, qty,
-            col_name, mach_name, op_name, start_str, end_str, s.freeze_level
+            col_name, mach_name, op_name, start_str, end_str,
+            round(loading_m, 1), round(proc_m, 1), round(unloading_m, 1), round(clean_m, 1), round(total_m, 1),
+            s.freeze_level
         ])
 
         for col_num in range(1, len(slot_headers) + 1):
             cell = ws_slots.cell(row=s_row, column=col_num)
             cell.border = thin_border
-            cell.alignment = Alignment(horizontal="center" if col_num in [1, 5, 9, 10, 11] else "left", vertical="center")
+            cell.alignment = Alignment(horizontal="center" if col_num in [1, 5, 9, 10, 11, 12, 13, 14, 15, 16] else "left", vertical="center")
             if s.is_locked:
                 cell.fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
 
