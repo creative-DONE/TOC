@@ -364,3 +364,36 @@ def test_locked_orders_protected_from_automatic_rebalance(db):
     assert res_unlock["success"] is True
     assert res_unlock.get("is_locked") is False
 
+def test_matrix_cell_order_number_and_quantity_separated(db):
+    """
+    Verifies that machine cells in the planning matrix keep order_number and quantity_kg
+    distinct, format cell_display with line separation, and never concatenate them into
+    an ambiguous continuous string like '110250 kg'.
+    """
+    matrix = get_planning_matrix_data(db)
+    orders = matrix["orders"]
+    assert len(orders) > 0
+
+    assigned_count = 0
+    for o in orders:
+        for m_id_str, cell in o["machine_cells"].items():
+            if cell["assigned"]:
+                assigned_count += 1
+                # Must contain distinct fields
+                assert "order_number" in cell
+                assert "quantity_kg" in cell
+                assert "cell_display" in cell
+
+                # Order number must be prefixed (e.g. ORD-101)
+                assert cell["order_number"].startswith("ORD-")
+                # cell_display must clearly separate order number and quantity with a newline
+                assert "\n" in cell["cell_display"]
+                parts = cell["cell_display"].split("\n")
+                assert len(parts) == 2
+                assert parts[0].startswith("ORD-")
+                assert "kg" in parts[1]
+                # Cannot be concatenated like "110250 kg"
+                assert not parts[0].replace("ORD-", "").endswith(str(int(cell["quantity_kg"])))
+
+    assert assigned_count > 0, "Expected at least one assigned machine cell in the planning matrix."
+

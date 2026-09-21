@@ -3705,24 +3705,41 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
                               {isAssigned ? (
                                 <button
                                   onClick={() => setCellActionData({ order: o, machine: m, cell })}
-                                  className={`w-full py-2 px-2.5 rounded-lg font-mono text-sm font-bold transition-all flex flex-col items-center justify-center cursor-pointer shadow-sm border ${
+                                  className={`matrix-cell-btn w-full py-2 px-2 rounded-lg font-mono text-sm font-bold transition-all flex flex-col items-center justify-center cursor-pointer shadow-sm border ${
                                     cell.is_locked
                                       ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
                                       : 'bg-blue-50 border-blue-200 text-blue-900 hover:bg-blue-100'
                                   }`}
                                   title={`Assigned to ${m.code}. Click to Move, Remove, or Lock.`}
                                 >
-                                  <div className="flex items-center gap-1.5">
+                                  {/* Line 1: Order Number with Color Dot and Lock */}
+                                  <div className="order-number flex items-center justify-center gap-1.5 w-full">
                                     <span
                                       className="w-2.5 h-2.5 rounded-full shrink-0"
                                       style={{ backgroundColor: COLOUR_HEX_MAP[o.colour_code] || '#38bdf8' }}
+                                      title={o.colour_name || o.colour_code || 'Color'}
                                     ></span>
-                                    <span className="font-extrabold">{cell.order_label || o.short_order_number}</span>
-                                    {cell.is_locked && <i data-lucide="lock" className="w-3.5 h-3.5 text-amber-700 shrink-0"></i>}
-                                    {cell.warning && <i data-lucide="alert-triangle" className="w-3.5 h-3.5 text-amber-700 shrink-0" title={cell.warning}></i>}
+                                    <span className="font-extrabold tracking-tight">
+                                      {(() => {
+                                        const rawNum = String(o.raw_order_number || o.order_number || cell.order_label || o.short_order_number || o.id || '');
+                                        if (rawNum.startsWith('ORD-')) return rawNum.split(' ')[0];
+                                        if (/^\d+$/.test(rawNum)) return `ORD-${rawNum}`;
+                                        return rawNum;
+                                      })()}
+                                    </span>
+                                    {cell.is_locked && (
+                                      <span className="text-xs inline-flex items-center text-amber-700 shrink-0 ml-0.5" title="Locked Order">
+                                        🔒
+                                      </span>
+                                    )}
+                                    {cell.warning && (
+                                      <i data-lucide="alert-triangle" className="w-3.5 h-3.5 text-amber-700 shrink-0" title={cell.warning}></i>
+                                    )}
                                   </div>
-                                  <div className="text-xs text-slate-700 font-extrabold tracking-tight mt-1">
-                                    {(cell.quantity_kg || o.quantity_kg)?.toLocaleString()} kg
+
+                                  {/* Line 2: Quantity in kg as separate UI element */}
+                                  <div className="order-quantity text-xs text-slate-700 font-extrabold tracking-tight mt-1 w-full text-center">
+                                    {Number(cell.quantity_kg !== undefined && cell.quantity_kg !== null ? cell.quantity_kg : o.quantity_kg)?.toLocaleString()} kg
                                   </div>
                                 </button>
                               ) : (

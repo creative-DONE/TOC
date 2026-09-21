@@ -311,8 +311,9 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
                         machine_cells[m_id_str] = {
                             "assigned": True,
                             "slot_id": slot.id,
-                            "order_label": short_num,
-                            "cell_display": f"{short_num}\n{slot_w:.0f} kg",
+                            "order_label": o.order_number,
+                            "order_number": o.order_number,
+                            "cell_display": f"{o.order_number}\n{slot_w:.0f} kg",
                             "is_locked": slot.is_locked,
                             "freeze_level": slot.freeze_level,
                             "quantity_kg": slot_w,
@@ -327,6 +328,7 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
                             "assigned": False,
                             "slot_id": None,
                             "order_label": None,
+                            "order_number": None,
                             "cell_display": "",
                             "is_locked": False,
                             "warning": None
@@ -401,8 +403,9 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
                     machine_cells[m_id_str] = {
                         "assigned": True,
                         "slot_id": single_slot.id,
-                        "order_label": short_num,
-                        "cell_display": f"{short_num}\n{order_w:.0f} kg",
+                        "order_label": o.order_number,
+                        "order_number": o.order_number,
+                        "cell_display": f"{o.order_number}\n{order_w:.0f} kg",
                         "is_locked": single_slot.is_locked,
                         "freeze_level": single_slot.freeze_level,
                         "quantity_kg": order_w,
@@ -417,6 +420,7 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
                         "assigned": False,
                         "slot_id": None,
                         "order_label": None,
+                        "order_number": None,
                         "cell_display": "",
                         "is_locked": False,
                         "warning": None
