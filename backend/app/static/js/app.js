@@ -156,6 +156,18 @@ function App() {
             <span>{optimizing ? "Optimizing..." : "Re-Optimize Schedule"}</span>
           </button>
 
+          <button
+            onClick={() => setActiveTab('calculator')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold transition-all shadow-xs cursor-pointer ${
+              activeTab === 'calculator'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20'
+                : 'bg-white hover:bg-blue-50 text-blue-700 border-blue-200'
+            }`}
+          >
+            <i data-lucide="calculator" className={`w-4 h-4 ${activeTab === 'calculator' ? 'text-white' : 'text-blue-600'}`}></i>
+            <span>Approx Time Calculator</span>
+          </button>
+
           <a
             href="/api/reports/excel"
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs text-xs font-medium transition-all"
@@ -225,6 +237,7 @@ function App() {
             onSelectSlot={(slot) => setSelectedSlot(slot)}
             onRefresh={fetchData}
             showToast={showToast}
+            onNavigateTab={(t) => setActiveTab(t)}
           />
         )}
 
@@ -2539,17 +2552,11 @@ function MatrixAddOrderModal({ machines, onClose, onAdd, loading }) {
               </div>
             </div>
             <div>
-              <label className="block text-slate-700 mb-1 font-medium">Initial Vessel (Optional)</label>
-              <select
-                value={form.machine_id || ''}
-                onChange={e => setForm({ ...form, machine_id: e.target.value ? Number(e.target.value) : null })}
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-1 focus:ring-cyan-500 cursor-pointer"
-              >
-                <option value="" className="text-slate-900 bg-white">Auto-Assign (DBR Rule)</option>
-                {machines.map(m => (
-                  <option key={m.id} value={m.id} className="text-slate-900 bg-white">{m.code} (Cap: {m.capacity_kg}kg)</option>
-                ))}
-              </select>
+              <label className="block text-slate-700 mb-1 font-medium">Machine Allocation</label>
+              <div className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 font-semibold flex items-center gap-2">
+                <i data-lucide="cpu" className="w-4 h-4 text-blue-600"></i>
+                <span>⚡ Automatic Selection (By Capacity &amp; Due Date)</span>
+              </div>
             </div>
           </div>
 
@@ -2728,7 +2735,7 @@ function ExcelImportModal({ onClose, onImportSuccess, showToast }) {
 // =========================================================================
 // 5. PRODUCTION PLANNING MATRIX & DAILY AGENDA VIEW
 // =========================================================================
-function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgendaDays, onSelectOrder, onSelectSlot, onRefresh, showToast }) {
+function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgendaDays, onSelectOrder, onSelectSlot, onRefresh, showToast, onNavigateTab }) {
   // Local states
   const [localMatrix, setLocalMatrix] = React.useState(planningMatrix || null);
   const [viewMode, setViewMode] = React.useState('matrix'); // 'matrix' (default Excel table) or 'timeline' (shift detail)
@@ -3214,6 +3221,18 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
             <i data-lucide="plus" className="w-3.5 h-3.5"></i>
             <span>Add Order</span>
           </button>
+
+          {/* Approx Time Calculator Button */}
+          {onNavigateTab && (
+            <button
+              onClick={() => onNavigateTab('calculator')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-blue-50 text-blue-700 font-bold text-xs border border-blue-300 shadow-xs cursor-pointer shrink-0"
+              title="Estimate completion time and determine optimal vessel"
+            >
+              <i data-lucide="calculator" className="w-3.5 h-3.5 text-blue-600"></i>
+              <span>Approx Time Calculator</span>
+            </button>
+          )}
 
           {/* Search Bar */}
           <div className="relative w-full">

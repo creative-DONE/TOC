@@ -66,10 +66,27 @@ def startup_event():
     finally:
         db.close()
 
+@app.middleware("http")
+async def add_no_cache_header(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 @app.get("/", response_class=HTMLResponse)
 def serve_home():
     template_path = Path(__file__).resolve().parent / "templates" / "index.html"
     if template_path.exists():
         with open(template_path, "r", encoding="utf-8") as f:
-            return f.read()
+            content = f.read()
+            return HTMLResponse(
+                content=content,
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
     return "<h1>TOC Textile Scheduler API is Running</h1>"
