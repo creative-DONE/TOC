@@ -32,6 +32,8 @@ def test_get_planning_matrix_structure(db):
     assert "summary" in matrix
     assert "machine_load_summary" in matrix
     assert "day_summary" in matrix
+    assert "total_utility_pct" in matrix["summary"]
+    assert 0.0 <= matrix["summary"]["total_utility_pct"] <= 100.0
 
     machines = matrix["machines"]
     assert len(machines) > 0

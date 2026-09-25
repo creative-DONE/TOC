@@ -2889,6 +2889,29 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
   const activeConstraint = localMatrix?.active_constraint || null;
   const matrixSummary = localMatrix?.summary || {};
 
+  // Total Utility Percentage calculation across machines
+  const totalUtilityPct = React.useMemo(() => {
+    if (matrixSummary?.total_utility_pct !== undefined && matrixSummary?.total_utility_pct !== null) {
+      return Number(matrixSummary.total_utility_pct).toFixed(1);
+    }
+    if (!matrixMachines || matrixMachines.length === 0) return "0.0";
+    const totalSched = matrixMachines.reduce((sum, m) => sum + Number(m.scheduled_time_hours || 0), 0);
+    const totalAvail = matrixMachines.reduce((sum, m) => sum + Number(m.available_production_time_hours || 0), 0);
+    if (totalAvail > 0) {
+      return ((totalSched / totalAvail) * 100).toFixed(1);
+    }
+    const valid = matrixMachines.filter(m => m.utilization_pct !== undefined && m.utilization_pct !== null);
+    if (valid.length === 0) return "0.0";
+    return (valid.reduce((sum, m) => sum + Number(m.utilization_pct || 0), 0) / valid.length).toFixed(1);
+  }, [matrixSummary, matrixMachines]);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (window.lucide) window.lucide.createIcons();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [localMatrix, viewMode]);
+
   // Filter and sort matrix orders
   const filteredMatrixOrders = React.useMemo(() => {
     let list = matrixOrders;
@@ -3677,7 +3700,59 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
                   })
                 )}
               </tbody>
+              <tfoot className="border-t-2 border-slate-300 bg-slate-100 font-bold text-xs h-[44px]">
+                <tr>
+                  <td colSpan="5" className="sticky left-0 z-30 bg-slate-100 px-4 py-2.5 text-slate-800 border-r border-slate-300 shadow-md">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-black text-slate-800 tracking-wide">
+                        ( TOTAL UTILITY PERCENTAGE= {totalUtilityPct}% )
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        {filteredMatrixOrders.length} Orders • {(matrixSummary.planned_dyeing_kg || 0).toLocaleString()} kg
+                      </span>
+                    </div>
+                  </td>
+                  {matrixMachines.map(m => (
+                    <td key={m.id} className="px-3 py-2 text-center border-r border-slate-200 bg-slate-100">
+                      <div className="font-mono font-black text-slate-800">{m.utilization_pct}%</div>
+                      <div className="text-[10px] text-slate-500 font-medium">Load: {m.current_load_kg} kg</div>
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
             </table>
+          </div>
+        </div>
+
+        {/* Total Machine Utility Percentage Banner Below Event Schedule */}
+        <div className="mt-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+              <i data-lucide="gauge" className="w-4 h-4"></i>
+            </div>
+            <div>
+              <div className="font-mono text-sm font-black text-slate-800 tracking-wider">
+                ( TOTAL UTILITY PERCENTAGE= <span className="text-blue-700">{totalUtilityPct}%</span> )
+              </div>
+              <div className="text-[11px] text-slate-500 font-medium">
+                Fleet capacity utilization across {matrixMachines.length} machines ({matrixSummary.horizon_days || agendaDays}-day planning horizon)
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            {matrixMachines.map(m => (
+              <span
+                key={m.id}
+                className={`px-2 py-1 rounded font-mono font-bold border ${
+                  m.is_bottleneck
+                    ? 'bg-amber-50 text-amber-900 border-amber-300'
+                    : 'bg-white text-slate-700 border-slate-200'
+                }`}
+                title={`${m.name}: ${m.scheduled_time_hours}h scheduled / ${m.available_production_time_hours}h available (${m.current_load_kg} kg)`}
+              >
+                {m.code}: <span className={m.is_bottleneck ? 'text-amber-700 font-black' : 'text-blue-700 font-semibold'}>{m.utilization_pct}%</span>
+              </span>
+            ))}
           </div>
         </div>
       )}
@@ -3740,6 +3815,38 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* Total Machine Utility Percentage Banner Below Event Schedule */}
+          <div className="mt-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+                <i data-lucide="gauge" className="w-4 h-4"></i>
+              </div>
+              <div>
+                <div className="font-mono text-sm font-black text-slate-800 tracking-wider">
+                  ( TOTAL UTILITY PERCENTAGE= <span className="text-blue-700">{totalUtilityPct}%</span> )
+                </div>
+                <div className="text-[11px] text-slate-500 font-medium">
+                  Fleet capacity utilization across {matrixMachines.length} machines ({matrixSummary.horizon_days || agendaDays}-day planning horizon)
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              {matrixMachines.map(m => (
+                <span
+                  key={m.id}
+                  className={`px-2 py-1 rounded font-mono font-bold border ${
+                    m.is_bottleneck
+                      ? 'bg-amber-50 text-amber-900 border-amber-300'
+                      : 'bg-white text-slate-700 border-slate-200'
+                  }`}
+                  title={`${m.name}: ${m.scheduled_time_hours}h scheduled / ${m.available_production_time_hours}h available (${m.current_load_kg} kg)`}
+                >
+                  {m.code}: <span className={m.is_bottleneck ? 'text-amber-700 font-black' : 'text-blue-700 font-semibold'}>{m.utilization_pct}%</span>
+                </span>
+              ))}
             </div>
           </div>
         </div>

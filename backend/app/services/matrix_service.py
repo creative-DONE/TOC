@@ -479,6 +479,10 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
     # Default order display must strictly sort by ascending numeric order (101, 102, 103, 104...)
     order_rows.sort(key=lambda r: (extract_numeric_order_id(r.get("raw_order_number", r["order_number"])), r["planned_day"]))
 
+    total_scheduled_hours = sum(mm.get("scheduled_time_hours", 0.0) for mm in machine_metrics)
+    total_available_hours = sum(mm.get("available_production_time_hours", 0.0) for mm in machine_metrics)
+    total_utility_pct = round((total_scheduled_hours / total_available_hours * 100.0), 1) if total_available_hours > 0 else 0.0
+
     return {
         "machines": machine_metrics,
         "machine_load_summary": machine_load_summary,
@@ -500,6 +504,7 @@ def get_planning_matrix_data(db: Session, horizon_days: int = 7, reference_now: 
             "total_changeover_min": round(total_changeover_min, 1),
             "maintenance_hours": round(total_maint_hours, 1),
             "total_machines": len(machines),
+            "total_utility_pct": total_utility_pct,
             "horizon_days": horizon_days,
             "due_date_shortages_count": sum(1 for r in order_rows if not r.get("due_feasibility", {}).get("is_feasible", True) and r.get("due_feasibility", {}).get("shortage_kg", 0) > 0),
             "late_orders_count": sum(1 for r in order_rows if r.get("is_late")),
