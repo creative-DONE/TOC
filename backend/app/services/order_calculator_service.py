@@ -169,15 +169,18 @@ def calculate_order_time_estimate(
         total_batch_pure_hours = round(num_batches * batch_pure_hours, 2)
         total_required_hours = round(total_batch_pure_hours + initial_cleaning_h, 2)
 
-        # Determine earliest candidate start
-        if m_slots:
-            last_end = max((s.planned_end for s in m_slots if s.planned_end), default=None)
-            if last_end:
-                start_candidate = max(now + timedelta(minutes=30), last_end + timedelta(minutes=5))
+        # Determine earliest candidate start by advancing through contiguous queued slots from now
+        curr_avail = max(now + timedelta(minutes=30), today_midnight.replace(hour=8, minute=0, second=0))
+        for s in sorted(m_slots, key=lambda x: x.planned_start or now):
+            if not s.planned_start or not s.planned_end:
+                continue
+            if s.planned_end <= curr_avail:
+                continue
+            if s.planned_start <= curr_avail + timedelta(minutes=15):
+                curr_avail = max(curr_avail, s.planned_end + timedelta(minutes=5))
             else:
-                start_candidate = max(now + timedelta(minutes=30), today_midnight.replace(hour=8, minute=0, second=0))
-        else:
-            start_candidate = max(now + timedelta(minutes=30), today_midnight.replace(hour=8, minute=0, second=0))
+                break
+        start_candidate = curr_avail
 
         # Schedule processing time adhering to working hours shift and maintenances
         estimated_start, estimated_completion = add_production_time_over_shifts(

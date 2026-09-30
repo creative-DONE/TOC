@@ -3705,7 +3705,7 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
                   <td colSpan="5" className="sticky left-0 z-30 bg-slate-100 px-4 py-2.5 text-slate-800 border-r border-slate-300 shadow-md">
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-black text-slate-800 tracking-wide">
-                        TOTAL MACHINE UTILIZATION: {totalUtilizationPct}%
+                        TOTAL MACHINE EFFICIENCY PERCENTAGE: {totalUtilizationPct}%
                       </span>
                       <span className="text-[11px] text-slate-500 font-medium">
                         {filteredMatrixOrders.length} Orders • {(matrixSummary.planned_dyeing_kg || 0).toLocaleString()} kg
@@ -3724,7 +3724,7 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
           </div>
         </div>
 
-        {/* Total Machine Utilization Banner Below Event Schedule */}
+        {/* Total Machine Efficiency Percentage Banner Below Event Schedule */}
         <div className="mt-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
@@ -3732,10 +3732,10 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
             </div>
             <div>
               <div className="font-mono text-sm font-black text-slate-800 tracking-wider">
-                TOTAL MACHINE UTILIZATION: <span className="text-blue-700">{totalUtilizationPct}%</span>
+                TOTAL MACHINE EFFICIENCY PERCENTAGE: <span className="text-blue-700">{totalUtilizationPct}%</span>
               </div>
               <div className="text-[11px] text-slate-500 font-medium">
-                Fleet capacity utilization across {matrixMachines.length} machines ({matrixSummary.horizon_days || agendaDays}-day planning horizon)
+                Fleet capacity utilization / efficiency across {matrixMachines.length} machines ({matrixSummary.horizon_days || agendaDays}-day planning horizon)
               </div>
             </div>
           </div>
@@ -3819,7 +3819,7 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
             </div>
           </div>
 
-          {/* Total Machine Utilization Banner Below Event Schedule */}
+          {/* Total Machine Efficiency Percentage Banner Below Event Schedule */}
           <div className="mt-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
@@ -3827,10 +3827,10 @@ function AgendaView({ agenda, planningMatrix, agendaDays, machines, onChangeAgen
               </div>
               <div>
                 <div className="font-mono text-sm font-black text-slate-800 tracking-wider">
-                  TOTAL MACHINE UTILIZATION: <span className="text-blue-700">{totalUtilizationPct}%</span>
+                  TOTAL MACHINE EFFICIENCY PERCENTAGE: <span className="text-blue-700">{totalUtilizationPct}%</span>
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium">
-                  Fleet capacity utilization across {matrixMachines.length} machines ({matrixSummary.horizon_days || agendaDays}-day planning horizon)
+                  Fleet capacity utilization / efficiency across {matrixMachines.length} machines ({matrixSummary.horizon_days || agendaDays}-day planning horizon)
                 </div>
               </div>
             </div>

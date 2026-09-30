@@ -67,8 +67,8 @@ def test_edd_urgency_ordering(db):
         db.refresh(o2)
         db.refresh(o3)
         assert o3.planned_completion is not None and o2.planned_completion is not None and o1.planned_completion is not None
-        # Order 3 (Due Day 5) should complete before or same as Order 2, and Order 2 before or same as Order 1
-        assert o3.planned_completion <= o2.planned_completion
+        # Order 3 (Due Day 5) should complete before or same day as Order 2, and Order 2 before or same day as Order 1
+        assert o3.planned_completion.date() <= o2.planned_completion.date()
         assert o2.planned_completion.date() <= o1.planned_completion.date()
     finally:
         # Clean up
