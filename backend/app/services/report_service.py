@@ -165,23 +165,31 @@ def generate_production_excel_report(schedules: List[Any], report_title: str = "
             due_diff = (o.due_date.replace(hour=0, minute=0, second=0, microsecond=0) - today_midnight).days
             due_str = f"Day {max(1, due_diff + 1)}"
 
-        # Short order number
-        parts = o.order_number.split('-')
-        short_num = parts[-1] if len(parts) > 1 and parts[-1].isdigit() else o.order_number
+        # Standardized order number (e.g. ORD-105, ORD-DEL-6981)
+        ord_num = str(o.order_number or f"ORD-{o.id}")
+        if ord_num.isdigit():
+            ord_num = f"ORD-{ord_num}"
 
-        row_data = [o.order_number, round(o.quantity_kg, 1), due_str, day_str]
+        row_data = [ord_num, round(o.quantity_kg, 1), due_str, day_str]
 
-        # Machine columns: if assigned, fill with order number and allocated quantity
+        # Machine columns: if assigned, fill with order number and allocated quantity as distinct lines
         for m in machines:
-            mach_slot = next((s for s in o_slots if s.machine_id == m.id), None)
-            if mach_slot:
-                slot_w = mach_slot.batch.batch_quantity_kg if (mach_slot.batch and mach_slot.batch.batch_quantity_kg) else o.quantity_kg
-                row_data.append(f"{short_num}\n{slot_w:.0f} kg")
+            mach_slots = [s for s in o_slots if s.machine_id == m.id]
+            if mach_slots:
+                slot_w = sum(
+                    (s.batch.batch_quantity_kg if (s.batch and s.batch.batch_quantity_kg) else o.quantity_kg)
+                    for s in mach_slots
+                )
+                if len(mach_slots) == 1 and not (mach_slots[0].batch and mach_slots[0].batch.batch_quantity_kg):
+                    slot_w = o.quantity_kg
+                is_any_locked = any(s.is_locked for s in mach_slots)
+                lock_str = " 🔒" if is_any_locked else ""
+                row_data.append(f"● {ord_num}{lock_str}\n{slot_w:,.0f} kg")
             else:
                 row_data.append("")
 
         ws_matrix.append(row_data)
-        ws_matrix.row_dimensions[row_idx].height = 28
+        ws_matrix.row_dimensions[row_idx].height = 36
 
         # Style cells
         for col_idx in range(1, total_cols + 1):
@@ -193,17 +201,21 @@ def generate_production_excel_report(schedules: List[Any], report_title: str = "
             elif col_idx == 2:
                 cell.alignment = Alignment(horizontal="right", vertical="center")
                 cell.font = Font(name="Arial", size=9, bold=True, color="0F172A")
+                cell.number_format = '#,##0.0'
             elif col_idx == 3:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 cell.font = Font(name="Arial", size=9, color="475569")
+            elif col_idx == 4:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.font = Font(name="Arial", size=9, color="475569")
             else:
-                # Machine cell
-                m_idx = col_idx - 4
-                m = machines[m_idx] if m_idx < len(machines) else None
-                mach_slot = next((s for s in o_slots if s.machine_id == m.id), None) if m else None
-                if mach_slot:
-                    cell.alignment = Alignment(horizontal="center", vertical="center")
-                    if mach_slot.is_locked:
+                # Machine cell (columns 5 to total_cols map to machines[0 to len(machines)-1])
+                m_idx = col_idx - 5
+                m = machines[m_idx] if (0 <= m_idx < len(machines)) else None
+                mach_slots = [s for s in o_slots if s.machine_id == m.id] if m else []
+                if mach_slots:
+                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                    if any(s.is_locked for s in mach_slots):
                         cell.fill = locked_cell_fill
                         cell.font = locked_cell_font
                     else:
@@ -305,9 +317,10 @@ def generate_production_excel_report(schedules: List[Any], report_title: str = "
         max_len = 14
         for r in range(4, sum_r):
             val = str(ws_matrix.cell(row=r, column=col_idx).value or "")
-            if len(val) > max_len:
-                max_len = len(val)
-        ws_matrix.column_dimensions[col_letter].width = max(max_len + 3, 14)
+            for line in val.split("\n"):
+                if len(line) > max_len:
+                    max_len = len(line)
+        ws_matrix.column_dimensions[col_letter].width = max(max_len + 4, 15)
 
     # =========================================================================
     # SHEET 2: DETAILED DISPATCH SLOTS
@@ -370,6 +383,8 @@ def generate_production_excel_report(schedules: List[Any], report_title: str = "
             cell = ws_slots.cell(row=s_row, column=col_num)
             cell.border = thin_border
             cell.alignment = Alignment(horizontal="center" if col_num in [1, 5, 9, 10, 11, 12, 13, 14, 15, 16] else "left", vertical="center")
+            if col_num == 5:
+                cell.number_format = '#,##0.0'
             if s.is_locked:
                 cell.fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
 

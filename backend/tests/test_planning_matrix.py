@@ -236,7 +236,15 @@ def test_excel_planning_matrix_export(db):
             val = ws.cell(row=r, column=c).value
             if val is not None and str(val).strip() != "":
                 found_assigned_cell = True
-                assert "kg" in str(val) or str(val).isdigit() or "-" in str(val)
+                assert "kg" in str(val)
+                # Verify that order number and quantity are separated by newline
+                assert "\n" in str(val), f"Expected newline separation in machine cell, got: {val}"
+                # Verify wrap_text is True so Excel/WPS displays them on separate lines
+                assert ws.cell(row=r, column=c).alignment.wrap_text is True
+                parts = str(val).split("\n")
+                assert len(parts) == 2
+                assert parts[0].startswith("● ORD-")
+                assert "kg" in parts[1]
                 break
         if found_assigned_cell:
             break
