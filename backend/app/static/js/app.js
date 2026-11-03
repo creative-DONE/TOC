@@ -55,6 +55,14 @@ function App() {
   const [showAddVessel, setShowAddVessel] = useState(false);
   const [showAddDowntime, setShowAddDowntime] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [editingVessel, setEditingVessel] = useState(null);
+
+  // Inline editing state for vessels
+  const [editingMinCaps, setEditingMinCaps] = useState({});
+  const [editingMaxCaps, setEditingMaxCaps] = useState({});
+  const [savingVesselId, setSavingVesselId] = useState(null);
+  const [showAllVessels, setShowAllVessels] = useState(false);
 
   // Form Controls
   const [vesselsFreeFrom, setVesselsFreeFrom] = useState("2026-10-28T00:00");
@@ -91,6 +99,122 @@ function App() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleMinCapChange = (vesselId, val) => {
+    setEditingMinCaps(prev => ({ ...prev, [vesselId]: val }));
+  };
+
+  const handleMaxCapChange = (vesselId, val) => {
+    setEditingMaxCaps(prev => ({ ...prev, [vesselId]: val }));
+  };
+
+  const handleSaveMinCap = async (vessel) => {
+    const rawVal = editingMinCaps[vessel.id];
+    if (rawVal === undefined) return;
+    const val = parseFloat(rawVal);
+    if (isNaN(val) || val < 0) {
+      showToast("Please enter a valid minimum capacity (>= 0 kg)", "error");
+      setEditingMinCaps(prev => {
+        const next = { ...prev };
+        delete next[vessel.id];
+        return next;
+      });
+      return;
+    }
+    if (val === Number(vessel.min_cap)) {
+      setEditingMinCaps(prev => {
+        const next = { ...prev };
+        delete next[vessel.id];
+        return next;
+      });
+      return;
+    }
+
+    setSavingVesselId(vessel.id);
+    try {
+      const res = await fetch(`/api/vessel-planning/vessel/${vessel.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ min_cap: val })
+      });
+      if (!res.ok) throw new Error("Failed to update min capacity");
+      
+      setData(prev => {
+        if (!prev) return prev;
+        const updatedVessels = (prev.vessels || []).map(v => v.id === vessel.id ? { ...v, min_cap: val } : v);
+        const updatedBatches = (prev.batches || []).map(b => b.vessel === vessel.code ? { ...b, min_cap: val } : b);
+        return { ...prev, vessels: updatedVessels, batches: updatedBatches };
+      });
+
+      setEditingMinCaps(prev => {
+        const next = { ...prev };
+        delete next[vessel.id];
+        return next;
+      });
+      showToast(`✓ Vessel ${vessel.code} min capacity updated to ${val} kg!`);
+    } catch (err) {
+      showToast("Error updating min capacity: " + err.message, "error");
+    } finally {
+      setSavingVesselId(null);
+    }
+  };
+
+  const handleSaveMaxCap = async (vessel) => {
+    const rawVal = editingMaxCaps[vessel.id];
+    if (rawVal === undefined) return;
+    const val = parseFloat(rawVal);
+    if (isNaN(val) || val <= 0) {
+      showToast("Please enter a valid positive maximum capacity (> 0 kg)", "error");
+      setEditingMaxCaps(prev => {
+        const next = { ...prev };
+        delete next[vessel.id];
+        return next;
+      });
+      return;
+    }
+    if (val === Number(vessel.max_cap)) {
+      setEditingMaxCaps(prev => {
+        const next = { ...prev };
+        delete next[vessel.id];
+        return next;
+      });
+      return;
+    }
+
+    setSavingVesselId(vessel.id);
+    try {
+      const res = await fetch(`/api/vessel-planning/vessel/${vessel.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ max_cap: val })
+      });
+      if (!res.ok) throw new Error("Failed to update max capacity");
+      
+      setData(prev => {
+        if (!prev) return prev;
+        const updatedVessels = (prev.vessels || []).map(v => v.id === vessel.id ? { ...v, max_cap: val } : v);
+        const updatedBatches = (prev.batches || []).map(b => {
+          if (b.vessel === vessel.code) {
+            const fillPct = Math.min(100, Math.round(((b.batch_kg || 0) / val) * 100));
+            return { ...b, max_cap: val, fill_pct: fillPct };
+          }
+          return b;
+        });
+        return { ...prev, vessels: updatedVessels, batches: updatedBatches };
+      });
+
+      setEditingMaxCaps(prev => {
+        const next = { ...prev };
+        delete next[vessel.id];
+        return next;
+      });
+      showToast(`✓ Vessel ${vessel.code} max capacity updated to ${val} kg!`);
+    } catch (err) {
+      showToast("Error updating max capacity: " + err.message, "error");
+    } finally {
+      setSavingVesselId(null);
+    }
+  };
 
   const handleBuildSchedule = async () => {
     try {
@@ -427,6 +551,7 @@ function App() {
                   <th>DUE DATE</th>
                   <th className="num-col">PRIORITY</th>
                   <th className="num-col">WASH MINS AFTER SHADE</th>
+                  <th className="w-16 text-center">ACTION</th>
                 </tr>
               </thead>
               <tbody>
@@ -441,6 +566,15 @@ function App() {
                     <td className="text-slate-600">{ord.due_date}</td>
                     <td className="num-col text-slate-600">{ord.priority}</td>
                     <td className="num-col text-slate-600">{ord.wash_mins}</td>
+                    <td className="text-center">
+                      <button
+                        onClick={() => setEditingOrder(ord)}
+                        className="px-2.5 py-0.5 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50/70 hover:bg-blue-100 border border-blue-200 rounded transition-colors cursor-pointer"
+                        title={`Edit order ${ord.order_no}`}
+                      >
+                        Edit
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -480,6 +614,14 @@ function App() {
               <span className="text-blue-600 text-xs font-medium">
                 {data?.vessels?.length || 20} vessels
               </span>
+              {(data?.vessels?.length || 0) > 7 && (
+                <button
+                  onClick={() => setShowAllVessels(prev => !prev)}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium underline ml-2 cursor-pointer"
+                >
+                  {showAllVessels ? "Show fewer (7)" : `View all (${data.vessels.length})`}
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -506,17 +648,82 @@ function App() {
                   <th>VESSEL NO</th>
                   <th className="num-col">MIN CAPACITY (KG)</th>
                   <th className="num-col">MAX CAPACITY (KG)</th>
+                  <th className="w-16 text-center">ACTION</th>
                 </tr>
               </thead>
               <tbody>
-                {(data?.vessels || []).slice(0, 7).map((v, idx) => (
-                  <tr key={v.id}>
-                    <td className="text-slate-400">{idx + 1}</td>
-                    <td className="font-semibold text-slate-800">{v.code}</td>
-                    <td className="num-col text-slate-600">{v.min_cap}</td>
-                    <td className="num-col font-medium">{v.max_cap}</td>
-                  </tr>
-                ))}
+                {(showAllVessels ? (data?.vessels || []) : (data?.vessels || []).slice(0, 7)).map((v, idx) => {
+                  const currentMinVal = editingMinCaps[v.id] !== undefined ? editingMinCaps[v.id] : (v.min_cap ?? 0);
+                  const isMinChanged = editingMinCaps[v.id] !== undefined && Number(editingMinCaps[v.id]) !== Number(v.min_cap);
+                  const currentMaxVal = editingMaxCaps[v.id] !== undefined ? editingMaxCaps[v.id] : (v.max_cap ?? 0);
+                  const isMaxChanged = editingMaxCaps[v.id] !== undefined && Number(editingMaxCaps[v.id]) !== Number(v.max_cap);
+
+                  return (
+                    <tr key={v.id}>
+                      <td className="text-slate-400">{idx + 1}</td>
+                      <td className="font-semibold text-slate-800">{v.code}</td>
+                      <td className="num-col">
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={currentMinVal}
+                            onChange={e => handleMinCapChange(v.id, e.target.value)}
+                            onBlur={() => handleSaveMinCap(v)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleSaveMinCap(v); }}
+                            className="w-20 text-right px-2 py-0.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded focus:border-blue-600 focus:ring-1 focus:ring-blue-200 shadow-2xs"
+                            title="Modify Minimum Capacity manually (Press Enter or click away to save)"
+                          />
+                          {isMinChanged && (
+                            <button
+                              onClick={() => handleSaveMinCap(v)}
+                              disabled={savingVesselId === v.id}
+                              className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold shadow-xs cursor-pointer"
+                              title="Save Minimum Capacity"
+                            >
+                              {savingVesselId === v.id ? '...' : '✓'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="num-col font-medium">
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={currentMaxVal}
+                            onChange={e => handleMaxCapChange(v.id, e.target.value)}
+                            onBlur={() => handleSaveMaxCap(v)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleSaveMaxCap(v); }}
+                            className="w-20 text-right px-2 py-0.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded focus:border-blue-600 focus:ring-1 focus:ring-blue-200 shadow-2xs"
+                            title="Modify Maximum Capacity manually (Press Enter or click away to save)"
+                          />
+                          {isMaxChanged && (
+                            <button
+                              onClick={() => handleSaveMaxCap(v)}
+                              disabled={savingVesselId === v.id}
+                              className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold shadow-xs cursor-pointer"
+                              title="Save Maximum Capacity"
+                            >
+                              {savingVesselId === v.id ? '...' : '✓'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="text-center">
+                        <button
+                          onClick={() => setEditingVessel(v)}
+                          className="px-2.5 py-0.5 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50/70 hover:bg-blue-100 border border-blue-200 rounded transition-colors cursor-pointer"
+                          title={`Edit vessel ${v.code}`}
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1094,6 +1301,26 @@ function App() {
           onMoveSuccess={() => { setSelectedBatch(null); fetchData(); showToast("Batch moved successfully!"); }}
         />
       )}
+
+      {/* Modal: Edit Order */}
+      {editingOrder && (
+        <EditOrderModal
+          order={editingOrder}
+          onClose={() => setEditingOrder(null)}
+          onSuccess={(msg) => { setEditingOrder(null); fetchData(); showToast(msg || "Order updated successfully!"); }}
+          onDelete={(msg) => { setEditingOrder(null); fetchData(); showToast(msg || "Order deleted.", "info"); }}
+        />
+      )}
+
+      {/* Modal: Edit Vessel */}
+      {editingVessel && (
+        <EditVesselModal
+          vessel={editingVessel}
+          onClose={() => setEditingVessel(null)}
+          onSuccess={(msg) => { setEditingVessel(null); fetchData(); showToast(msg || "Vessel updated successfully!"); }}
+          onDelete={(msg) => { setEditingVessel(null); fetchData(); showToast(msg || "Vessel deleted.", "info"); }}
+        />
+      )}
     </div>
   );
 }
@@ -1255,6 +1482,192 @@ function AddOrderModal({ onClose, onSuccess }) {
   );
 }
 
+// Edit Order Modal
+function EditOrderModal({ order, onClose, onSuccess, onDelete }) {
+  const [orderNo, setOrderNo] = useState(order.order_no || "");
+  const [shade, setShade] = useState(order.shade || "");
+  const [orderQty, setOrderQty] = useState(order.order_qty || 100);
+  const [stockQty, setStockQty] = useState(order.stock_qty || 0);
+  const [minsPerBatch, setMinsPerBatch] = useState(order.mins_per_batch || 60);
+  const [dueDate, setDueDate] = useState(order.due_date || "28/10/2026");
+  const [priority, setPriority] = useState(order.priority || 2);
+  const [washMins, setWashMins] = useState(order.wash_mins || 30);
+  const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!orderNo.trim() || !shade.trim()) return;
+    try {
+      setSubmitting(true);
+      const res = await fetch(`/api/vessel-planning/order/${order.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          order_no: orderNo,
+          shade,
+          order_qty: Number(orderQty),
+          stock_qty: Number(stockQty),
+          mins_per_batch: Number(minsPerBatch),
+          due_date: dueDate,
+          priority: Number(priority),
+          wash_mins: Number(washMins)
+        })
+      });
+      if (!res.ok) throw new Error("Failed to update order");
+      onSuccess(`✓ Order ${orderNo} updated successfully!`);
+    } catch (err) {
+      alert("Failed to update order: " + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Are you sure you want to delete order ${order.order_no}?`)) return;
+    try {
+      setDeleting(true);
+      const res = await fetch(`/api/vessel-planning/order/${order.id}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error("Failed to delete order");
+      onDelete(`Order ${order.order_no} deleted successfully.`);
+    } catch (err) {
+      alert("Failed to delete order: " + err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl border border-slate-200 max-w-md w-full p-5">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="font-bold text-sm text-slate-800">Edit Customer Order</h3>
+            <span className="text-[11px] text-slate-400 font-mono">ID: #{order.id} • {order.order_no}</span>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+        </div>
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3 text-xs">
+          <div>
+            <label className="block text-slate-500 font-semibold mb-1">Order No</label>
+            <input
+              type="text"
+              required
+              value={orderNo}
+              onChange={e => setOrderNo(e.target.value)}
+              className="w-full uppercase font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-500 font-semibold mb-1">Shade / Colour</label>
+            <input
+              type="text"
+              required
+              value={shade}
+              onChange={e => setShade(e.target.value)}
+              className="w-full uppercase"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-slate-500 font-semibold mb-1">Order Qty (kg)</label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                value={orderQty}
+                onChange={e => setOrderQty(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-500 font-semibold mb-1">Available Stock (kg)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={stockQty}
+                onChange={e => setStockQty(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-slate-500 font-semibold mb-1">Mins / Batch</label>
+              <input
+                type="number"
+                value={minsPerBatch}
+                onChange={e => setMinsPerBatch(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-500 font-semibold mb-1">Wash Mins</label>
+              <input
+                type="number"
+                value={washMins}
+                onChange={e => setWashMins(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-slate-500 font-semibold mb-1">Due Date</label>
+              <input
+                type="text"
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-500 font-semibold mb-1">Priority</label>
+              <select
+                value={priority}
+                onChange={e => setPriority(e.target.value)}
+                className="w-full"
+              >
+                <option value={1}>1 (Urgent)</option>
+                <option value={2}>2 (Standard)</option>
+                <option value={3}>3 (Flexible)</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="px-3 py-1.5 border border-red-200 text-red-600 rounded hover:bg-red-50 text-xs font-medium cursor-pointer"
+            >
+              {deleting ? "Deleting..." : "Delete Order"}
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3 py-1.5 border border-slate-300 rounded hover:bg-slate-50 text-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow-xs"
+              >
+                {submitting ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // Add Vessel Modal
 function AddVesselModal({ onClose, onSuccess }) {
   const [code, setCode] = useState("");
@@ -1337,6 +1750,127 @@ function AddVesselModal({ onClose, onSuccess }) {
             >
               {submitting ? "Saving..." : "Add Vessel"}
             </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Edit Vessel Modal
+function EditVesselModal({ vessel, onClose, onSuccess, onDelete }) {
+  const [code, setCode] = useState(vessel.code || "");
+  const [minCap, setMinCap] = useState(vessel.min_cap !== undefined ? vessel.min_cap : 0);
+  const [maxCap, setMaxCap] = useState(vessel.max_cap || 500);
+  const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!code.trim()) return;
+    try {
+      setSubmitting(true);
+      const res = await fetch(`/api/vessel-planning/vessel/${vessel.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          min_cap: Number(minCap),
+          max_cap: Number(maxCap)
+        })
+      });
+      if (!res.ok) throw new Error("Failed to update vessel");
+      onSuccess(`✓ Vessel ${code} updated successfully!`);
+    } catch (err) {
+      alert("Failed to update vessel: " + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Are you sure you want to delete vessel ${vessel.code}?`)) return;
+    try {
+      setDeleting(true);
+      const res = await fetch(`/api/vessel-planning/vessel/${vessel.id}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error("Failed to delete vessel");
+      onDelete(`Vessel ${vessel.code} deleted successfully.`);
+    } catch (err) {
+      alert("Failed to delete vessel: " + err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl border border-slate-200 max-w-sm w-full p-5">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="font-bold text-sm text-slate-800">Edit Production Vessel</h3>
+            <span className="text-[11px] text-slate-400 font-mono">ID: #{vessel.id} • {vessel.code}</span>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+        </div>
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3 text-xs">
+          <div>
+            <label className="block text-slate-500 font-semibold mb-1">Vessel No / Code</label>
+            <input
+              type="text"
+              required
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              className="w-full uppercase font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-500 font-semibold mb-1">Min Capacity (kg) - Modifiable</label>
+            <input
+              type="number"
+              min="0"
+              value={minCap}
+              onChange={e => setMinCap(e.target.value)}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-500 font-semibold mb-1">Max Capacity (kg)</label>
+            <input
+              type="number"
+              min="1"
+              required
+              value={maxCap}
+              onChange={e => setMaxCap(e.target.value)}
+              className="w-full"
+            />
+          </div>
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="px-3 py-1.5 border border-red-200 text-red-600 rounded hover:bg-red-50 text-xs font-medium cursor-pointer"
+            >
+              {deleting ? "Deleting..." : "Delete Vessel"}
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3 py-1.5 border border-slate-300 rounded hover:bg-slate-50 text-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow-xs"
+              >
+                {submitting ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
           </div>
         </form>
       </div>

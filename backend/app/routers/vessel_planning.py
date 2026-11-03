@@ -35,10 +35,25 @@ class OrderCreate(BaseModel):
     priority: int = 2
     wash_mins: int = 30
 
+class OrderUpdate(BaseModel):
+    order_no: Optional[str] = None
+    shade: Optional[str] = None
+    order_qty: Optional[float] = None
+    stock_qty: Optional[float] = None
+    mins_per_batch: Optional[int] = None
+    due_date: Optional[str] = None
+    priority: Optional[int] = None
+    wash_mins: Optional[int] = None
+
 class VesselCreate(BaseModel):
     code: str
     min_cap: float = 0.0
     max_cap: float = 500.0
+
+class VesselUpdate(BaseModel):
+    code: Optional[str] = None
+    min_cap: Optional[float] = None
+    max_cap: Optional[float] = None
 
 class DowntimeCreate(BaseModel):
     vessel: Optional[str] = ""
@@ -90,6 +105,9 @@ def get_planning_state():
         }
     }
 
+# ============================================================================
+# ORDER CRUD ENDPOINTS
+# ============================================================================
 @router.post("/order")
 def add_order(payload: OrderCreate):
     new_id = max([o["id"] for o in current_orders], default=0) + 1
@@ -112,6 +130,58 @@ def add_order(payload: OrderCreate):
     current_orders.insert(0, new_order)
     return {"message": "Order added successfully", "order": new_order}
 
+@router.put("/order/{order_id}")
+@router.post("/order/{order_id}")
+def update_order(order_id: int, payload: OrderUpdate):
+    order = next((o for o in current_orders if o["id"] == order_id), None)
+    if not order:
+        order = next((o for o in current_orders if str(o["order_no"]).upper() == str(order_id).upper()), None)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    old_order_no = order["order_no"]
+    if payload.order_no is not None and payload.order_no.strip():
+        order["order_no"] = payload.order_no.strip().upper()
+    if payload.shade is not None and payload.shade.strip():
+        order["shade"] = payload.shade.strip().upper()
+    if payload.order_qty is not None:
+        order["order_qty"] = float(payload.order_qty)
+    if payload.stock_qty is not None:
+        order["stock_qty"] = float(payload.stock_qty)
+    if payload.mins_per_batch is not None:
+        order["mins_per_batch"] = int(payload.mins_per_batch)
+    if payload.due_date is not None:
+        order["due_date"] = payload.due_date
+    if payload.priority is not None:
+        order["priority"] = int(payload.priority)
+    if payload.wash_mins is not None:
+        order["wash_mins"] = int(payload.wash_mins)
+
+    order["to_dye_kg"] = max(0.0, order["order_qty"] - order["stock_qty"])
+
+    # Synchronize batches for this order
+    for b in current_batches:
+        if b.get("order") in [order["order_no"], old_order_no]:
+            b["order"] = order["order_no"]
+            b["shade"] = order["shade"]
+
+    return {"message": f"Order {order['order_no']} updated successfully", "order": order}
+
+@router.delete("/order/{order_id}")
+def delete_order(order_id: int):
+    global current_orders
+    order = next((o for o in current_orders if o["id"] == order_id), None)
+    if not order:
+        order = next((o for o in current_orders if str(o["order_no"]).upper() == str(order_id).upper()), None)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    current_orders = [o for o in current_orders if o["id"] != order["id"]]
+    return {"message": f"Order {order['order_no']} deleted successfully"}
+
+# ============================================================================
+# VESSEL CRUD ENDPOINTS
+# ============================================================================
 @router.post("/vessel")
 def add_vessel(payload: VesselCreate):
     new_id = max([v["id"] for v in current_vessels], default=0) + 1
@@ -126,6 +196,49 @@ def add_vessel(payload: VesselCreate):
     current_vessels.append(new_vessel)
     return {"message": "Vessel added successfully", "vessel": new_vessel}
 
+@router.put("/vessel/{vessel_id}")
+@router.post("/vessel/{vessel_id}")
+def update_vessel(vessel_id: int, payload: VesselUpdate):
+    vessel = next((v for v in current_vessels if v["id"] == vessel_id), None)
+    if not vessel:
+        vessel = next((v for v in current_vessels if str(v["code"]).upper() == str(vessel_id).upper()), None)
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    old_code = vessel["code"]
+    if payload.code is not None and payload.code.strip():
+        vessel["code"] = payload.code.strip().upper()
+    if payload.min_cap is not None:
+        vessel["min_cap"] = float(payload.min_cap)
+    if payload.max_cap is not None:
+        vessel["max_cap"] = float(payload.max_cap)
+
+    # Synchronize batches for this vessel so min_cap, max_cap, and fill_pct are updated
+    for b in current_batches:
+        if b.get("vessel") in [vessel["code"], old_code]:
+            b["vessel"] = vessel["code"]
+            b["min_cap"] = vessel["min_cap"]
+            b["max_cap"] = vessel["max_cap"]
+            if vessel["max_cap"] > 0:
+                b["fill_pct"] = min(100, int(round((b.get("batch_kg", 0) / vessel["max_cap"]) * 100)))
+
+    return {"message": f"Vessel {vessel['code']} updated successfully", "vessel": vessel}
+
+@router.delete("/vessel/{vessel_id}")
+def delete_vessel(vessel_id: int):
+    global current_vessels
+    vessel = next((v for v in current_vessels if v["id"] == vessel_id), None)
+    if not vessel:
+        vessel = next((v for v in current_vessels if str(v["code"]).upper() == str(vessel_id).upper()), None)
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    current_vessels = [v for v in current_vessels if v["id"] != vessel["id"]]
+    return {"message": f"Vessel {vessel['code']} deleted successfully"}
+
+# ============================================================================
+# DOWNTIME CRUD ENDPOINTS
+# ============================================================================
 @router.post("/downtime")
 def add_downtime(payload: DowntimeCreate):
     new_id = len(current_breakdowns) + 1
@@ -145,6 +258,9 @@ def delete_downtime(downtime_id: int):
     current_breakdowns = [d for d in current_breakdowns if d["id"] != downtime_id]
     return {"message": "Downtime removed successfully"}
 
+# ============================================================================
+# SCHEDULE PLANNING ENDPOINTS
+# ============================================================================
 @router.post("/build")
 def build_schedule(config_updates: Optional[Dict[str, Any]] = None):
     if config_updates:

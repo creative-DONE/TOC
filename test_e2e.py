@@ -24,6 +24,18 @@ def test_all_endpoints():
     assert len(vp["batches"]) == 269
     print("  [PASS] GET /api/vessel-planning/state (102 orders, 20 vessels, 269 batches)")
 
+    # Test Vessel CRUD (Modify min capacity manually)
+    v_update = client.put("/api/vessel-planning/vessel/1", json={"min_cap": 75.0, "max_cap": 120.0}).json()
+    assert v_update["vessel"]["min_cap"] == 75.0
+    assert v_update["vessel"]["max_cap"] == 120.0
+    print("  [PASS] PUT /api/vessel-planning/vessel/1 (Min capacity modified manually to 75.0kg)")
+
+    # Test Order CRUD (Edit order)
+    o_update = client.put("/api/vessel-planning/order/1", json={"order_qty": 25.0, "shade": "UPDATED SHADE"}).json()
+    assert o_update["order"]["order_qty"] == 25.0
+    assert o_update["order"]["shade"] == "UPDATED SHADE"
+    print("  [PASS] PUT /api/vessel-planning/order/1 (Order updated successfully)")
+
     # 1. Test HTML Landing page
     res = client.get("/")
     assert res.status_code == 200
