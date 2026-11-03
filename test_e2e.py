@@ -16,6 +16,13 @@ def test_all_endpoints():
     print("================================================================")
 
     client = TestClient(app)
+    client.__enter__()
+    # Test Vessel Planning API
+    vp = client.get("/api/vessel-planning/state").json()
+    assert len(vp["orders"]) == 102
+    assert len(vp["vessels"]) == 20
+    assert len(vp["batches"]) == 269
+    print("  [PASS] GET /api/vessel-planning/state (102 orders, 20 vessels, 269 batches)")
 
     # 1. Test HTML Landing page
     res = client.get("/")

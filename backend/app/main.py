@@ -13,7 +13,7 @@ from app.models import *
 
 # Import routers
 from app.routers import (
-    dashboard, orders, machines, materials, manpower, schedule, simulation, disruptions, reports
+    dashboard, orders, machines, materials, manpower, schedule, simulation, disruptions, reports, vessel_planning
 )
 
 # Initialize database schema
@@ -44,6 +44,7 @@ app.include_router(schedule.router)
 app.include_router(simulation.router)
 app.include_router(disruptions.router)
 app.include_router(reports.router)
+app.include_router(vessel_planning.router)
 
 # Mount static files
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -75,8 +76,7 @@ async def add_no_cache_header(request: Request, call_next):
         response.headers["Expires"] = "0"
     return response
 
-@app.get("/", response_class=HTMLResponse)
-def serve_home():
+def get_index_html_response():
     template_path = Path(__file__).resolve().parent / "templates" / "index.html"
     if template_path.exists():
         with open(template_path, "r", encoding="utf-8") as f:
@@ -89,4 +89,13 @@ def serve_home():
                     "Expires": "0"
                 }
             )
-    return "<h1>TOC Textile Scheduler API is Running</h1>"
+    return HTMLResponse("<h1>TOC Textile Scheduler API is Running</h1>")
+
+@app.get("/", response_class=HTMLResponse)
+def serve_home():
+    return get_index_html_response()
+
+# Support exact ERP path shown in the screenshot footer
+@app.get("/AIT/Transactions/FT_vessel_planning.aspx", response_class=HTMLResponse)
+def serve_vessel_planning_aspx():
+    return get_index_html_response()
